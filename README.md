@@ -11,14 +11,22 @@ Check out [the Moonlight wiki](https://github.com/moonlight-stream/moonlight-doc
 [![Moonlight for iOS and tvOS](https://moonlight-stream.org/images/App_Store_Badge_135x40.svg)](https://apps.apple.com/us/app/moonlight-game-streaming/id1000551566)
 
 ## Building
-* Install Xcode from the [App Store page](https://apps.apple.com/us/app/xcode/id497799835)
-* Run `git clone --recursive https://github.com/moonlight-stream/moonlight-ios.git`
-  *  If you've already clone the repo without `--recursive`, run `git submodule update --init --recursive`
-* Open Moonlight.xcodeproj in Xcode
-* To run on a real device, you will need to locally modify the signing options:
-    * Click on "Moonlight" at the top of the left sidebar
-    * Click on the "Signing & Capabilities" tab
-    * Under "Targets", select "Moonlight" (for iOS/iPadOS) or "Moonlight TV" (for tvOS)
-    * In the "Team" dropdown, select your name. If your name doesn't appear, you may need to sign into Xcode with your Apple account.
-    * Change the "Bundle Identifier" to something different. You can add your name or some random letters to make it unique.
-    * Now you can select your Apple device in the top bar as a target and click the Play button to run.
+
+### Checkout
+From a parent directory, clone the repository with every dependency:
+
+```sh
+git clone --recursive https://github.com/moonlight-stream/moonlight-ios.git
+cd moonlight-ios
+```
+
+For an existing checkout, initialize or repair all dependencies with:
+
+```sh
+git submodule update --init --recursive
+```
+
+### Xcode
+Install Xcode from the [App Store page](https://apps.apple.com/us/app/xcode/id497799835), then open `Moonlight.xcodeproj` in Xcode. The iOS targets declare an iOS 12.0 deployment target.
+
+An iOS device build requires macOS and Xcode, even when signing and provisioning are handled separately. To run on a real device, configure the Team and a unique Bundle Identifier under the target's **Signing & Capabilities** settings, then select the device and run the app.
