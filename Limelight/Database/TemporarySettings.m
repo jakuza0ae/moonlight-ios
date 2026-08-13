@@ -11,6 +11,10 @@
 
 @implementation TemporarySettings
 
++ (LMStreamProfile *)defaultSecondMonitorProfile {
+    return [LMStreamProfile defaultSecondMonitorProfile];
+}
+
 - (id) initFromSettings:(Settings*)settings {
     self = [self init];
     
@@ -90,6 +94,7 @@
     self.statsOverlay = settings.statsOverlay;
 #endif
     self.uniqueId = settings.uniqueId;
+    self.secondMonitorProfile = [[self class] defaultSecondMonitorProfile];
     
     return self;
 }

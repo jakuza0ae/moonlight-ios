@@ -184,4 +184,97 @@
     XCTAssertEqual(state.peakTouchCount, 0U);
 }
 
+- (void)testIPadAirSecondMonitorProfileUsesSafeDefaults {
+    LMStreamProfile *profile = [LMStreamProfile defaultSecondMonitorProfile];
+
+    XCTAssertEqual(profile.mode, LMStreamModeSecondMonitor);
+    XCTAssertEqual(profile.resolution.width, 1280);
+    XCTAssertEqual(profile.resolution.height, 720);
+    XCTAssertEqual(profile.fps, 30);
+    XCTAssertEqual(profile.codec, LMStreamCodecH264);
+    XCTAssertEqual(profile.audioPolicy, LMAudioPolicyDisabled);
+    XCTAssertEqual(profile.inputMode, LMInputModeNativeTouch);
+    XCTAssertTrue(profile.reconnectEnabled);
+}
+
+- (void)testIPadAirRejectsUnsupportedCodec {
+    LMStreamProfile *profile = [LMStreamProfile defaultSecondMonitorProfile];
+    profile.codec = LMStreamCodecAV1;
+    NSError *error = nil;
+
+    XCTAssertFalse([profile validateForCapabilityProfile:LMDeviceCapabilityProfileIPadAir error:&error]);
+    XCTAssertEqual(error.code, LMProfileValidationErrorUnsupportedCodec);
+    XCTAssertEqualObjects(error.userInfo[LMProfileValidationFieldKey], @"codec");
+}
+
+- (void)testIPadAirRejectsHEVC {
+    LMStreamProfile *profile = [LMStreamProfile defaultSecondMonitorProfile];
+    profile.codec = LMStreamCodecHEVC;
+    NSError *error = nil;
+
+    XCTAssertFalse([profile validateForCapabilityProfile:LMDeviceCapabilityProfileIPadAir error:&error]);
+    XCTAssertEqual(error.code, LMProfileValidationErrorUnsupportedCodec);
+}
+
+- (void)testIPadAirRejectsHDR {
+    LMStreamProfile *profile = [LMStreamProfile defaultSecondMonitorProfile];
+    profile.hdrEnabled = YES;
+    NSError *error = nil;
+
+    XCTAssertFalse([profile validateForCapabilityProfile:LMDeviceCapabilityProfileIPadAir error:&error]);
+    XCTAssertEqual(error.code, LMProfileValidationErrorUnsupportedHDR);
+}
+
+- (void)testIPadAirRejects120FPS {
+    LMStreamProfile *profile = [LMStreamProfile defaultSecondMonitorProfile];
+    profile.fps = 120;
+    NSError *error = nil;
+
+    XCTAssertFalse([profile validateForCapabilityProfile:LMDeviceCapabilityProfileIPadAir error:&error]);
+    XCTAssertEqual(error.code, LMProfileValidationErrorUnsupportedFrameRate);
+}
+
+- (void)testExperimental1080p30RequiresExplicitOptIn {
+    LMStreamProfile *profile = [LMStreamProfile defaultSecondMonitorProfile];
+    profile.resolution = CGSizeMake(1920, 1080);
+    NSError *error = nil;
+
+    XCTAssertFalse([profile validateForCapabilityProfile:LMDeviceCapabilityProfileIPadAir error:&error]);
+    XCTAssertEqual(error.code, LMProfileValidationErrorExperimentalResolutionDisabled);
+
+    profile.experimental1080pEnabled = YES;
+    error = nil;
+    XCTAssertTrue([profile validateForCapabilityProfile:LMDeviceCapabilityProfileIPadAir error:&error]);
+    XCTAssertNil(error);
+}
+
+- (void)testReconnectStateRetainsHostAndProfileWithBoundedBackoff {
+    LMStreamProfile *profile = [LMStreamProfile defaultSecondMonitorProfile];
+    LMReconnectStateMachine *state = [[LMReconnectStateMachine alloc] initWithHost:@"host-uuid"
+                                                                              profile:profile];
+
+    XCTAssertEqual(state.state, LMStreamStateConnecting);
+    XCTAssertTrue([state beginReconnect]);
+    XCTAssertEqual(state.state, LMStreamStateReconnecting);
+    XCTAssertEqualObjects(state.host, @"host-uuid");
+    XCTAssertEqualObjects(state.profile, profile);
+    XCTAssertGreaterThan(state.retryDelay, 0.0);
+
+    NSTimeInterval firstDelay = state.retryDelay;
+    XCTAssertTrue([state beginReconnect]);
+    XCTAssertGreaterThan(state.retryDelay, firstDelay);
+    XCTAssertLessThanOrEqual(state.retryDelay, LMReconnectMaximumDelay);
+}
+
+- (void)testReconnectStateReachesUserVisibleFailureAfterRetryBudget {
+    LMReconnectStateMachine *state = [[LMReconnectStateMachine alloc] initWithHost:@"host-uuid"
+                                                                              profile:[LMStreamProfile defaultSecondMonitorProfile]];
+
+    while ([state beginReconnect]) {
+    }
+
+    XCTAssertEqual(state.state, LMStreamStateFailed);
+    XCTAssertEqual(state.retryCount, LMReconnectRetryBudget);
+}
+
 @end

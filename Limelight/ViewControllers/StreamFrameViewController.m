@@ -46,6 +46,10 @@
     StreamView *_streamView;
     UIScrollView *_scrollView;
     BOOL _userIsInteracting;
+    BOOL _stoppingStream;
+    LMStreamState _streamState;
+    LMReconnectStateMachine *_reconnectState;
+    NSTimer *_reconnectTimer;
     CGSize _keyboardSize;
     
 #if !TARGET_OS_TV
@@ -54,8 +58,79 @@
 }
 
 - (void)stopStream {
+    _stoppingStream = YES;
+    [_reconnectTimer invalidate];
+    _reconnectTimer = nil;
+    [_reconnectState stop];
     [_streamView cancelAllTouches];
     [_streamMan stopStream];
+}
+
+- (BOOL)usesReconnectProfile {
+    return self.streamConfig.profile != nil &&
+        self.streamConfig.profile.mode == LMStreamModeSecondMonitor &&
+        self.streamConfig.profile.reconnectEnabled;
+}
+
+- (void)stopCurrentStream {
+    [_streamView cancelAllTouches];
+    [_streamMan stopStream];
+}
+
+- (void)showReconnectFailure:(NSString *)message {
+    [_reconnectState fail];
+    _streamState = LMStreamStateFailed;
+    [self stopCurrentStream];
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [UIApplication sharedApplication].idleTimerDisabled = NO;
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Connection Error"
+                                                                           message:message
+                                                                    preferredStyle:UIAlertControllerStyleAlert];
+        [Utils addHelpOptionToDialog:alert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+            [self returnToMainFrame];
+        }]];
+        [self presentViewController:alert animated:YES completion:nil];
+    });
+}
+
+- (void)retryStream:(NSTimer *)timer {
+    _reconnectTimer = nil;
+    if (_stoppingStream || _reconnectState.state != LMStreamStateReconnecting) {
+        return;
+    }
+
+    _streamState = LMStreamStateConnecting;
+    [_stageLabel setText:@"Reconnecting..."];
+    [_stageLabel sizeToFit];
+    [_spinner startAnimating];
+    _streamMan = [[StreamManager alloc] initWithConfig:self.streamConfig
+                                             renderView:_streamView
+                                    connectionCallbacks:self];
+    NSOperationQueue *opQueue = [[NSOperationQueue alloc] init];
+    [opQueue addOperation:_streamMan];
+}
+
+- (void)beginReconnect {
+    [_streamView cancelAllTouches];
+
+    if (![_reconnectState beginReconnect]) {
+        [self showReconnectFailure:@"The connection could not be restored after several attempts."];
+        return;
+    }
+
+    _streamState = LMStreamStateReconnecting;
+    [_stageLabel setText:@"Reconnecting..."];
+    [_stageLabel sizeToFit];
+    _stageLabel.hidden = NO;
+    [_spinner startAnimating];
+    [_reconnectTimer invalidate];
+    _reconnectTimer = [NSTimer scheduledTimerWithTimeInterval:_reconnectState.retryDelay
+                                                        target:self
+                                                      selector:@selector(retryStream:)
+                                                      userInfo:nil
+                                                       repeats:NO];
 }
 
 - (void)viewDidAppear:(BOOL)animated
@@ -89,6 +164,12 @@
     [UIApplication sharedApplication].idleTimerDisabled = YES;
     
     _settings = [[[DataManager alloc] init] getSettings];
+
+    _streamState = LMStreamStateConnecting;
+    if ([self usesReconnectProfile]) {
+        _reconnectState = [[LMReconnectStateMachine alloc] initWithHost:self.streamConfig.host
+                                                                  profile:self.streamConfig.profile];
+    }
     
     _stageLabel = [[UILabel alloc] init];
     [_stageLabel setUserInteractionEnabled:NO];
@@ -375,6 +456,10 @@
 - (void) connectionStarted {
     Log(LOG_I, @"Connection started");
     dispatch_async(dispatch_get_main_queue(), ^{
+        self->_streamState = LMStreamStateStreaming;
+        [self->_reconnectState connectionStarted];
+        [self->_reconnectTimer invalidate];
+        self->_reconnectTimer = nil;
         // Leave the spinner spinning until it's obscured by
         // the first frame of video.
         self->_stageLabel.hidden = YES;
@@ -396,6 +481,15 @@
 
 - (void)connectionTerminated:(int)errorCode {
     Log(LOG_I, @"Connection terminated: %d", errorCode);
+
+    if ([self usesReconnectProfile] && !_stoppingStream && errorCode != ML_ERROR_GRACEFUL_TERMINATION) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self beginReconnect];
+        });
+        return;
+    }
+
+    [_streamView cancelAllTouches];
     
     unsigned int portFlags = LiGetPortFlagsFromTerminationErrorCode(errorCode);
     unsigned int portTestResults = LiTestClientConnectivity(CONN_TEST_SERVER, 443, portFlags);
@@ -523,6 +617,13 @@
 
 - (void) launchFailed:(NSString*)message {
     Log(LOG_I, @"Launch failed: %@", message);
+
+    if ([self usesReconnectProfile] && _reconnectState.state == LMStreamStateReconnecting && !_stoppingStream) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self beginReconnect];
+        });
+        return;
+    }
     
     dispatch_async(dispatch_get_main_queue(), ^{
         // Allow the display to go to sleep now

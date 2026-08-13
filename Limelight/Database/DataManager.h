@@ -38,6 +38,11 @@
 
 - (TemporarySettings*) getSettings;
 
+- (LMStreamProfile*) getProfileForHost:(NSString*)hostUuid profileName:(NSString*)profileName;
+- (void) saveProfile:(LMStreamProfile*)profile forHost:(NSString*)hostUuid profileName:(NSString*)profileName;
+- (LMStreamProfile*) getSecondMonitorProfileForHost:(NSString*)hostUuid;
+- (void) saveSecondMonitorProfile:(LMStreamProfile*)profile forHost:(NSString*)hostUuid;
+
 - (void) updateUniqueId:(NSString*)uniqueId;
 - (NSString*) getUniqueId;
 

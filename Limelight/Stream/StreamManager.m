@@ -25,6 +25,7 @@
     UIView* _renderView;
     id<ConnectionCallbacks> _callbacks;
     Connection* _connection;
+    NSError *_configurationError;
 }
 
 - (id) initWithConfig:(StreamConfiguration*)config renderView:(UIView*)view connectionCallbacks:(id<ConnectionCallbacks>)callbacks {
@@ -32,12 +33,20 @@
     _config = config;
     _renderView = view;
     _callbacks = callbacks;
+    if (_config.profile != nil) {
+        [_config applyProfile:_config.profile error:&_configurationError];
+    }
     _config.riKey = [Utils randomBytes:16];
     _config.riKeyId = arc4random();
     return self;
 }
 
 - (void)main {
+    if (_configurationError != nil) {
+        [_callbacks launchFailed:_configurationError.localizedDescription];
+        return;
+    }
+
     [CryptoManager generateKeyPairUsingSSL];
     
     HttpManager* hMan = [[HttpManager alloc] initWithAddress:_config.host httpsPort:_config.httpsPort

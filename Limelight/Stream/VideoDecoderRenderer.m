@@ -35,6 +35,7 @@ extern int ff_isom_write_av1c(AVIOContext *pb, const uint8_t *buf, int size,
     
     CADisplayLink* _displayLink;
     BOOL framePacing;
+    BOOL _decoderFailureReported;
 }
 
 - (void)reinitializeDisplayLayer
@@ -504,8 +505,18 @@ int DrSubmitDecodeUnit(PDECODE_UNIT decodeUnit);
             formatDesc = [self createAV1FormatDescriptionForIDRFrame:fullFrameData];
         }
         else {
-            // Unsupported codec!
-            abort();
+            // Do not terminate the process for a codec that this renderer does
+            // not understand. The controller can show the failure or retry the
+            // retained profile without losing the host selection.
+            Log(LOG_E, @"Unsupported video codec format: 0x%08x", videoFormat);
+            if (!_decoderFailureReported) {
+                _decoderFailureReported = YES;
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [self->_callbacks connectionTerminated:ML_ERROR_FRAME_CONVERSION];
+                });
+            }
+            free(data);
+            return DR_NEED_IDR;
         }
     }
     

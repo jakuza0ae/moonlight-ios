@@ -8,6 +8,7 @@
 
 #import "Settings+CoreDataClass.h"
 #import "../Input/InputMode.h"
+#import "../Stream/StreamConfiguration.h"
 
 @interface TemporarySettings : NSObject
 
@@ -36,7 +37,9 @@
 @property (nonatomic) BOOL absoluteTouchMode;
 @property (nonatomic) LMInputMode inputMode;
 @property (nonatomic) BOOL statsOverlay;
+@property (nonatomic, retain) LMStreamProfile *secondMonitorProfile;
 
 - (id) initFromSettings:(Settings*)settings;
++ (LMStreamProfile *)defaultSecondMonitorProfile;
 
 @end

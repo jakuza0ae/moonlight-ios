@@ -7,6 +7,88 @@
 //
 
 #import "../Input/InputMode.h"
+#import <CoreGraphics/CoreGraphics.h>
+
+typedef NS_ENUM(NSInteger, LMStreamMode) {
+    LMStreamModeGame = 0,
+    LMStreamModeSecondMonitor,
+};
+
+typedef NS_ENUM(NSInteger, LMStreamCodec) {
+    LMStreamCodecH264 = 0,
+    LMStreamCodecHEVC,
+    LMStreamCodecAV1,
+};
+
+typedef NS_ENUM(NSInteger, LMAudioPolicy) {
+    LMAudioPolicyDisabled = 0,
+    LMAudioPolicyHost,
+    LMAudioPolicyStream,
+};
+
+typedef NS_ENUM(NSInteger, LMDeviceCapabilityProfile) {
+    LMDeviceCapabilityProfileGeneric = 0,
+    LMDeviceCapabilityProfileIPadAir,
+};
+
+typedef NS_ENUM(NSInteger, LMStreamState) {
+    LMStreamStateConnecting = 0,
+    LMStreamStateWaitingForDisplay,
+    LMStreamStateStreaming,
+    LMStreamStateReconnecting,
+    LMStreamStateFailed,
+    LMStreamStateStopped,
+};
+
+typedef NS_ENUM(NSInteger, LMProfileValidationErrorCode) {
+    LMProfileValidationErrorInvalidValue = 1,
+    LMProfileValidationErrorUnsupportedCodec,
+    LMProfileValidationErrorUnsupportedHDR,
+    LMProfileValidationErrorUnsupportedFrameRate,
+    LMProfileValidationErrorExperimentalResolutionDisabled,
+};
+
+FOUNDATION_EXPORT NSString * const LMProfileValidationDomain;
+FOUNDATION_EXPORT NSString * const LMProfileValidationFieldKey;
+FOUNDATION_EXPORT NSInteger const LMReconnectRetryBudget;
+FOUNDATION_EXPORT NSTimeInterval const LMReconnectMaximumDelay;
+
+@interface LMStreamProfile : NSObject <NSCopying>
+
+@property (nonatomic) LMStreamMode mode;
+@property (nonatomic) CGSize resolution;
+@property (nonatomic) NSInteger fps;
+@property (nonatomic) NSInteger bitrate;
+@property (nonatomic) LMStreamCodec codec;
+@property (nonatomic) LMAudioPolicy audioPolicy;
+@property (nonatomic) LMInputMode inputMode;
+@property (nonatomic) BOOL reconnectEnabled;
+@property (nonatomic) BOOL hdrEnabled;
+@property (nonatomic) BOOL experimental1080pEnabled;
+
++ (instancetype)defaultSecondMonitorProfile;
++ (LMDeviceCapabilityProfile)currentDeviceCapabilityProfile;
++ (instancetype)profileWithDictionary:(NSDictionary *)dictionary;
+- (NSDictionary *)dictionaryRepresentation;
+- (BOOL)validateForCapabilityProfile:(LMDeviceCapabilityProfile)capabilityProfile error:(NSError **)error;
+
+@end
+
+@interface LMReconnectStateMachine : NSObject
+
+@property (nonatomic, readonly) NSString *host;
+@property (nonatomic, readonly) LMStreamProfile *profile;
+@property (nonatomic, readonly) LMStreamState state;
+@property (nonatomic, readonly) NSInteger retryCount;
+@property (nonatomic, readonly) NSTimeInterval retryDelay;
+
+- (instancetype)initWithHost:(NSString *)host profile:(LMStreamProfile *)profile;
+- (BOOL)beginReconnect;
+- (void)connectionStarted;
+- (void)fail;
+- (void)stop;
+
+@end
 
 @interface StreamConfiguration : NSObject
 
@@ -34,5 +116,11 @@
 @property BOOL useFramePacing;
 @property NSData* serverCert;
 @property LMInputMode inputMode;
+@property (nonatomic, retain) LMStreamProfile *profile;
+
+- (BOOL)applyProfile:(LMStreamProfile *)profile error:(NSError **)error;
+- (BOOL)applyProfile:(LMStreamProfile *)profile
+forCapabilityProfile:(LMDeviceCapabilityProfile)capabilityProfile
+               error:(NSError **)error;
 
 @end

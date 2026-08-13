@@ -144,14 +144,12 @@ static NSString* DB_NAME = @"Limelight_iOS.sqlite";
     [self preparePersistentStore];
     
     if (![_persistentStoreCoordinator addPersistentStoreWithType:storeType configuration:nil URL:[self getStoreURL] options:options error:&error]) {
-        // Log the error
+        // Never delete the user's hosts and game settings when a migration or
+        // store-open error occurs. The caller can surface the failure and a
+        // later app update can provide a compatible migration.
         Log(LOG_E, @"Critical database error: %@, %@", error, [error userInfo]);
-        
-        // Drop the database
-        [self dropDatabase];
-        
-        // Try again
-        return [self persistentStoreCoordinator];
+        _persistentStoreCoordinator = nil;
+        return nil;
     }
     
     return _persistentStoreCoordinator;
@@ -163,17 +161,6 @@ static NSString* DB_NAME = @"Limelight_iOS.sqlite";
 - (NSURL *)applicationDocumentsDirectory
 {
     return [[[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask] lastObject];
-}
-
-- (void) dropDatabase
-{
-    // Delete the file on disk
-    [[NSFileManager defaultManager] removeItemAtURL:[self getStoreURL] error:nil];
-    
-#if TARGET_OS_TV
-    // Also delete the copy in the NSUserDefaults on tvOS
-    [[NSUserDefaults standardUserDefaults] removeObjectForKey:DB_NAME];
-#endif
 }
 
 - (void) preparePersistentStore

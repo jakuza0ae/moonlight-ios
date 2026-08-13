@@ -9,6 +9,7 @@
 #import "SettingsViewController.h"
 #import "TemporarySettings.h"
 #import "DataManager.h"
+#import "../Stream/StreamConfiguration.h"
 
 #import <VideoToolbox/VideoToolbox.h>
 #import <AVFoundation/AVFoundation.h>
@@ -16,6 +17,7 @@
 @implementation SettingsViewController {
     NSInteger _bitrate;
     NSInteger _lastSelectedResolutionIndex;
+    BOOL _secondMonitorProfileMode;
 }
 
 @dynamic overrideUserInterfaceStyle;
@@ -136,6 +138,22 @@ BOOL isCustomResolution(CGSize res) {
     
     DataManager* dataMan = [[DataManager alloc] init];
     TemporarySettings* currentSettings = [dataMan getSettings];
+    _secondMonitorProfileMode = [[NSUserDefaults standardUserDefaults] boolForKey:@"Moonlight.SecondMonitor.SettingsMode"];
+
+    // Task 7 owns the profile picker. When that picker opens this controller
+    // for a second-monitor profile, remove values the iPad Air cannot use.
+    if (_secondMonitorProfileMode && [LMStreamProfile currentDeviceCapabilityProfile] == LMDeviceCapabilityProfileIPadAir) {
+        [self.codecSelector removeAllSegments];
+        [self.codecSelector insertSegmentWithTitle:@"H.264" atIndex:0 animated:NO];
+        [self.codecSelector setSelectedSegmentIndex:0];
+        [self.framerateSelector removeAllSegments];
+        [self.framerateSelector insertSegmentWithTitle:@"30 FPS" atIndex:0 animated:NO];
+        [self.framerateSelector setSelectedSegmentIndex:0];
+        [self.hdrSelector removeAllSegments];
+        [self.hdrSelector insertSegmentWithTitle:@"Unsupported on this device" atIndex:0 animated:NO];
+        [self.hdrSelector setSelectedSegmentIndex:0];
+        [self.hdrSelector setEnabled:NO];
+    }
     
     // Ensure we pick a bitrate that falls exactly onto a slider notch
     _bitrate = bitrateTable[[self getSliderValueForBitrate:[currentSettings.bitrate intValue]]];
@@ -178,6 +196,9 @@ BOOL isCustomResolution(CGSize res) {
             framerate = 2;
             break;
     }
+    if (_secondMonitorProfileMode) {
+        framerate = 0;
+    }
 
     NSInteger resolution = 1;
     for (int i = 0; i < RESOLUTION_TABLE_SIZE; i++) {
@@ -195,11 +216,12 @@ BOOL isCustomResolution(CGSize res) {
             enable120Fps = true;
         }
     }
-    if (!enable120Fps) {
+    if (!enable120Fps && !_secondMonitorProfileMode) {
         [self.framerateSelector removeSegmentAtIndex:2 animated:NO];
     }
 
     // Disable codec selector segments for unsupported codecs
+    if (!_secondMonitorProfileMode) {
 #if defined(__IPHONE_16_0) || defined(__TVOS_16_0)
     if (!VTIsHardwareDecodeSupported(kCMVideoCodecType_AV1))
 #endif
@@ -230,13 +252,14 @@ BOOL isCustomResolution(CGSize res) {
             [self.codecSelector setSelectedSegmentIndex:0];
             break;
     }
+    }
     
-    if (!VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC) || !(AVPlayer.availableHDRModes & AVPlayerHDRModeHDR10)) {
+    if (!_secondMonitorProfileMode && (!VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC) || !(AVPlayer.availableHDRModes & AVPlayerHDRModeHDR10))) {
         [self.hdrSelector removeAllSegments];
         [self.hdrSelector insertSegmentWithTitle:@"Unsupported on this device" atIndex:0 animated:NO];
         [self.hdrSelector setEnabled:NO];
     }
-    else {
+    else if (!_secondMonitorProfileMode) {
         [self.hdrSelector setSelectedSegmentIndex:currentSettings.enableHdr ? 1 : 0];
     }
     
@@ -476,7 +499,7 @@ BOOL isCustomResolution(CGSize res) {
         case 2:
             return 120;
         default:
-            abort();
+            return 30;
     }
 }
 
@@ -497,7 +520,7 @@ BOOL isCustomResolution(CGSize res) {
                 return CODEC_PREF_AV1;
                 
             default:
-                abort();
+                return CODEC_PREF_H264;
         }
     }
 }
@@ -538,6 +561,31 @@ BOOL isCustomResolution(CGSize res) {
     BOOL absoluteTouchMode = [self.touchModeSelector selectedSegmentIndex] == 1;
     BOOL statsOverlay = [self.statsOverlaySelector selectedSegmentIndex] == 1;
     BOOL enableHdr = [self.hdrSelector selectedSegmentIndex] == 1;
+
+    if (_secondMonitorProfileMode) {
+        LMStreamProfile *profile = [LMStreamProfile defaultSecondMonitorProfile];
+        profile.resolution = CGSizeMake(width, height);
+        profile.fps = framerate;
+        profile.bitrate = _bitrate;
+        profile.codec = _secondMonitorProfileMode && [LMStreamProfile currentDeviceCapabilityProfile] == LMDeviceCapabilityProfileIPadAir ? LMStreamCodecH264 :
+            (preferredCodec == CODEC_PREF_H264 ? LMStreamCodecH264 :
+            (preferredCodec == CODEC_PREF_HEVC ? LMStreamCodecHEVC : LMStreamCodecAV1));
+        profile.hdrEnabled = enableHdr;
+        NSError *profileError = nil;
+        if (![profile validateForCapabilityProfile:[LMStreamProfile currentDeviceCapabilityProfile] error:&profileError]) {
+            Log(LOG_W, @"Rejected second-monitor profile settings: %@", profileError.localizedDescription);
+            return;
+        }
+        NSString *hostUuid = [[NSUserDefaults standardUserDefaults] stringForKey:@"Moonlight.SecondMonitor.HostUUID"];
+        if (hostUuid.length != 0) {
+            [dataMan saveSecondMonitorProfile:profile forHost:hostUuid];
+        }
+        else {
+            Log(LOG_W, @"Second-monitor profile was not saved because no host is selected.");
+        }
+        return;
+    }
+
     [dataMan saveSettingsWithBitrate:_bitrate
                            framerate:framerate
                               height:height

@@ -147,6 +147,40 @@
     return tempSettings;
 }
 
+- (NSString*) profileDefaultsKeyForHost:(NSString*)hostUuid profileName:(NSString*)profileName {
+    if (hostUuid.length == 0 || profileName.length == 0) {
+        return nil;
+    }
+    return [NSString stringWithFormat:@"Moonlight.StreamProfile.%@.%@", hostUuid, profileName];
+}
+
+- (LMStreamProfile*) getProfileForHost:(NSString*)hostUuid profileName:(NSString*)profileName {
+    NSString *key = [self profileDefaultsKeyForHost:hostUuid profileName:profileName];
+    if (key == nil) {
+        return [LMStreamProfile defaultSecondMonitorProfile];
+    }
+
+    LMStreamProfile *profile = [LMStreamProfile profileWithDictionary:[[NSUserDefaults standardUserDefaults] dictionaryForKey:key]];
+    return profile ?: [LMStreamProfile defaultSecondMonitorProfile];
+}
+
+- (void) saveProfile:(LMStreamProfile*)profile forHost:(NSString*)hostUuid profileName:(NSString*)profileName {
+    NSString *key = [self profileDefaultsKeyForHost:hostUuid profileName:profileName];
+    if (key == nil || profile == nil) {
+        return;
+    }
+
+    [[NSUserDefaults standardUserDefaults] setObject:[profile dictionaryRepresentation] forKey:key];
+}
+
+- (LMStreamProfile*) getSecondMonitorProfileForHost:(NSString*)hostUuid {
+    return [self getProfileForHost:hostUuid profileName:@"second-monitor"];
+}
+
+- (void) saveSecondMonitorProfile:(LMStreamProfile*)profile forHost:(NSString*)hostUuid {
+    [self saveProfile:profile forHost:hostUuid profileName:@"second-monitor"];
+}
+
 - (Settings*) retrieveSettings {
     NSArray* fetchedRecords = [self fetchRecords:@"Settings"];
     if (fetchedRecords.count == 0) {
