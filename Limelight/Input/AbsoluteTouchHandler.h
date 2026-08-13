@@ -21,6 +21,21 @@ FOUNDATION_EXPORT BOOL LMShouldStartLongPressForTouchCount(NSUInteger activeTouc
 FOUNDATION_EXPORT BOOL LMShouldCancelLongPressForTouchCount(NSUInteger activeTouchCount);
 FOUNDATION_EXPORT BOOL LMShouldSendTwoFingerScrollForTouchCount(NSUInteger activeTouchCount);
 
+typedef struct {
+    NSUInteger peakTouchCount;
+    CGPoint scrollCenter;
+    BOOL hasScrollCenter;
+    BOOL moved;
+} LMCompatibilityGestureState;
+
+FOUNDATION_EXPORT LMCompatibilityGestureState LMCompatibilityGestureStateBegin(NSUInteger activeTouchCount,
+                                                                                 CGPoint center);
+FOUNDATION_EXPORT CGPoint LMCompatibilityGestureStateMove(LMCompatibilityGestureState *state,
+                                                           NSUInteger activeTouchCount,
+                                                           CGPoint currentCenter);
+FOUNDATION_EXPORT BOOL LMCompatibilityGestureStateShouldTap(const LMCompatibilityGestureState *state);
+FOUNDATION_EXPORT void LMCompatibilityGestureStateReset(LMCompatibilityGestureState *state);
+
 @interface LMActiveTouchPointerMap : NSObject
 - (uint32_t)pointerIdForTouch:(id)touch create:(BOOL)create;
 - (void)releaseTouch:(id)touch;

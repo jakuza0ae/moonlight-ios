@@ -63,6 +63,43 @@ BOOL LMShouldSendTwoFingerScrollForTouchCount(NSUInteger activeTouchCount) {
     return activeTouchCount == 2;
 }
 
+LMCompatibilityGestureState LMCompatibilityGestureStateBegin(NSUInteger activeTouchCount,
+                                                              CGPoint center) {
+    LMCompatibilityGestureState state = {0};
+    state.peakTouchCount = activeTouchCount;
+    state.scrollCenter = center;
+    state.hasScrollCenter = LMShouldSendTwoFingerScrollForTouchCount(activeTouchCount);
+    return state;
+}
+
+CGPoint LMCompatibilityGestureStateMove(LMCompatibilityGestureState *state,
+                                         NSUInteger activeTouchCount,
+                                         CGPoint currentCenter) {
+    if (!LMShouldSendTwoFingerScrollForTouchCount(activeTouchCount)) {
+        state->hasScrollCenter = NO;
+        return CGPointZero;
+    }
+
+    CGPoint delta = CGPointZero;
+    if (state->hasScrollCenter) {
+        delta = LMScrollDeltaForTouchMovement(state->scrollCenter, currentCenter);
+        if (delta.x != 0.0f || delta.y != 0.0f) {
+            state->moved = YES;
+        }
+    }
+    state->scrollCenter = currentCenter;
+    state->hasScrollCenter = YES;
+    return delta;
+}
+
+BOOL LMCompatibilityGestureStateShouldTap(const LMCompatibilityGestureState *state) {
+    return state->peakTouchCount == 2 && !state->moved;
+}
+
+void LMCompatibilityGestureStateReset(LMCompatibilityGestureState *state) {
+    *state = (LMCompatibilityGestureState){0};
+}
+
 @implementation LMActiveTouchPointerMap {
     NSMapTable *pointerIds;
     uint32_t nextPointerId;
@@ -124,10 +161,7 @@ BOOL LMShouldSendTwoFingerScrollForTouchCount(NSUInteger activeTouchCount) {
     CGPoint lastTouchUpLocation;
     BOOL compatibilityLeftButtonDown;
     BOOL compatibilityRightButtonDown;
-    CGPoint scrollCenter;
-    BOOL hasScrollCenter;
-    NSUInteger compatibilityPeakTouchCount;
-    BOOL compatibilityGestureMoved;
+    LMCompatibilityGestureState compatibilityGestureState;
     BOOL hybridMouseGesture;
 }
 
@@ -259,44 +293,27 @@ BOOL LMShouldSendTwoFingerScrollForTouchCount(NSUInteger activeTouchCount) {
 
 - (void)beginCompatibilityGestureForEvent:(UIEvent *)event {
     NSUInteger activeTouchCount = [self activeTouchCountForEvent:event];
-    compatibilityPeakTouchCount = activeTouchCount;
-    compatibilityGestureMoved = NO;
-    if (LMShouldSendTwoFingerScrollForTouchCount(activeTouchCount)) {
-        scrollCenter = [self centerForEvent:event];
-        hasScrollCenter = YES;
-    }
-    else {
-        hasScrollCenter = NO;
-    }
+    compatibilityGestureState = LMCompatibilityGestureStateBegin(activeTouchCount,
+                                                                   [self centerForEvent:event]);
 }
 
 - (void)moveCompatibilityGestureForEvent:(UIEvent *)event {
     NSUInteger activeTouchCount = [self activeTouchCountForEvent:event];
-    if (!LMShouldSendTwoFingerScrollForTouchCount(activeTouchCount)) {
-        hasScrollCenter = NO;
-        return;
-    }
-
     CGPoint currentCenter = [self centerForEvent:event];
-    if (hasScrollCenter) {
-        CGPoint delta = LMScrollDeltaForTouchMovement(scrollCenter, currentCenter);
-        if (delta.y != 0.0f) {
-            LiSendHighResScrollEvent(delta.y * 10.0f);
-            compatibilityGestureMoved = YES;
-        }
+    CGPoint delta = LMCompatibilityGestureStateMove(&compatibilityGestureState,
+                                                    activeTouchCount,
+                                                    currentCenter);
+    if (delta.y != 0.0f) {
+        LiSendHighResScrollEvent(delta.y * 10.0f);
     }
-    scrollCenter = currentCenter;
-    hasScrollCenter = YES;
 }
 
 - (void)endCompatibilityGesture {
-    if (compatibilityPeakTouchCount == 2 && !compatibilityGestureMoved) {
+    if (LMCompatibilityGestureStateShouldTap(&compatibilityGestureState)) {
         LiSendMouseButtonEvent(BUTTON_ACTION_PRESS, BUTTON_RIGHT);
         LiSendMouseButtonEvent(BUTTON_ACTION_RELEASE, BUTTON_RIGHT);
     }
-    compatibilityPeakTouchCount = 0;
-    compatibilityGestureMoved = NO;
-    hasScrollCenter = NO;
+    LMCompatibilityGestureStateReset(&compatibilityGestureState);
 }
 
 - (void)sendCompatibilityBegan:(NSSet *)touches withEvent:(UIEvent *)event {
@@ -359,9 +376,6 @@ BOOL LMShouldSendTwoFingerScrollForTouchCount(NSUInteger activeTouchCount) {
 }
 
 - (void)beginMouseRouteForTouches:(NSSet *)touches withEvent:(UIEvent *)event {
-    if (inputMode == LMInputModeMouseCompatibility && [self activeTouchCountForEvent:event] != 1) {
-        return;
-    }
     [self sendCompatibilityBegan:touches withEvent:event];
 }
 
@@ -458,9 +472,7 @@ BOOL LMShouldSendTwoFingerScrollForTouchCount(NSUInteger activeTouchCount) {
     [self cancelNativePointers];
     [self releaseCompatibilityButtons];
     hybridMouseGesture = NO;
-    compatibilityPeakTouchCount = 0;
-    compatibilityGestureMoved = NO;
-    hasScrollCenter = NO;
+    LMCompatibilityGestureStateReset(&compatibilityGestureState);
     lastTouchDown = nil;
 }
 
@@ -468,9 +480,7 @@ BOOL LMShouldSendTwoFingerScrollForTouchCount(NSUInteger activeTouchCount) {
     [self cancelNativePointers];
     [self releaseCompatibilityButtons];
     hybridMouseGesture = NO;
-    compatibilityPeakTouchCount = 0;
-    compatibilityGestureMoved = NO;
-    hasScrollCenter = NO;
+    LMCompatibilityGestureStateReset(&compatibilityGestureState);
     lastTouchDown = nil;
 }
 

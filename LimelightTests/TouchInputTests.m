@@ -156,4 +156,32 @@
     XCTAssertEqual(configuration.inputMode, LMInputModeNativeTouch);
 }
 
+- (void)testMouseCompatibilityTwoFingerGestureInitializesScrollAndCleansUp {
+    LMCompatibilityGestureState state = LMCompatibilityGestureStateBegin(2, CGPointMake(100, 200));
+    CGPoint delta = LMCompatibilityGestureStateMove(&state, 2, CGPointMake(100, 224));
+
+    XCTAssertEqualWithAccuracy(delta.x, 0.0, 0.0001);
+    XCTAssertEqualWithAccuracy(delta.y, 24.0, 0.0001);
+    XCTAssertTrue(state.moved);
+    XCTAssertFalse(LMCompatibilityGestureStateShouldTap(&state));
+
+    LMCompatibilityGestureStateReset(&state);
+
+    XCTAssertEqual(state.peakTouchCount, 0U);
+    XCTAssertFalse(state.hasScrollCenter);
+    XCTAssertFalse(state.moved);
+}
+
+- (void)testMouseCompatibilityTwoFingerTapInitializesAndResetsWithoutScroll {
+    LMCompatibilityGestureState state = LMCompatibilityGestureStateBegin(2, CGPointMake(100, 200));
+
+    XCTAssertTrue(state.hasScrollCenter);
+    XCTAssertTrue(LMCompatibilityGestureStateShouldTap(&state));
+
+    LMCompatibilityGestureStateReset(&state);
+
+    XCTAssertFalse(LMCompatibilityGestureStateShouldTap(&state));
+    XCTAssertEqual(state.peakTouchCount, 0U);
+}
+
 @end
