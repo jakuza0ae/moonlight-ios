@@ -7,6 +7,7 @@
 #import "StreamFrameViewController.h"
 #import "KeyboardInputField.h"
 #import "StreamView.h"
+#import "StreamManager.h"
 #import "SettingsViewController.h"
 
 @interface LMTrackingStreamView : StreamView
@@ -505,6 +506,37 @@
     XCTAssertFalse(LMSecondMonitorProfileSupportsExplicit1080p30(NO, CGSizeMake(1920, 1080), 30));
     XCTAssertFalse(LMSecondMonitorProfileSupportsExplicit1080p30(YES, CGSizeMake(1920, 1080), 60));
     XCTAssertTrue(LMSecondMonitorProfileSupportsExplicit1080p30(YES, CGSizeMake(1920, 1080), 30));
+}
+
+- (void)testSecondMonitorDiagnosticsFormatterIncludesBoundedRecordWithoutSecrets {
+    LMStreamDiagnostics *diagnostics = [[LMStreamDiagnostics alloc] init];
+    diagnostics.hostDisplayID = @"{vdd-guid}";
+    diagnostics.mappedOutput = @"\\\\.\\DISPLAY2";
+    diagnostics.captureBackend = @"ddx";
+    diagnostics.encoder = @"h264_nvenc";
+    diagnostics.codec = @"H.264";
+    diagnostics.width = 1280;
+    diagnostics.height = 720;
+    diagnostics.fps = 30;
+    diagnostics.bitrateKbps = 5000;
+    diagnostics.rttMs = 22;
+    diagnostics.droppedFrames = 3;
+    diagnostics.reconnectCount = 1;
+    diagnostics.lastError = @"whoami --password=not-a-diagnostic-value";
+
+    NSString *formatted = LMFormatSecondMonitorDiagnostics(diagnostics);
+
+    XCTAssertTrue([formatted containsString:@"Host display: {vdd-guid}"]);
+    XCTAssertTrue([formatted containsString:@"Mapped output: \\\\.\\DISPLAY2"]);
+    XCTAssertTrue([formatted containsString:@"Resolution: 1280x720"]);
+    XCTAssertTrue([formatted containsString:@"Bitrate: 5000 kbps"]);
+    XCTAssertTrue([formatted containsString:@"RTT: 22 ms"]);
+    XCTAssertTrue([formatted containsString:@"Dropped frames: 3"]);
+    XCTAssertTrue([formatted containsString:@"Reconnects: 1"]);
+    XCTAssertTrue([formatted containsString:@"Last error: redacted"]);
+    XCTAssertFalse([formatted containsString:@"not-a-diagnostic-value"]);
+    XCTAssertFalse([formatted containsString:@"whoami"]);
+    XCTAssertLessThan(formatted.length, 2048U);
 }
 
 - (void)testSecondMonitorSettingsFactoryReturnsVisibleNavigationContainer {

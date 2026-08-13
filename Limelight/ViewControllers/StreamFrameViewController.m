@@ -51,6 +51,7 @@
     LMReconnectStateMachine *_reconnectState;
     StreamConfiguration *_reconnectConfig;
     NSTimer *_reconnectTimer;
+    NSString *_lastDiagnosticError;
     CGSize _keyboardSize;
     
 #if !TARGET_OS_TV
@@ -79,6 +80,11 @@
 
     [_streamView cancelAllTouches];
     [_streamView releaseKeyboardActions];
+}
+
+- (void)recordDiagnosticError:(NSString *)error {
+    _lastDiagnosticError = [error copy];
+    [_streamMan setLastError:_lastDiagnosticError];
 }
 
 - (void)stopStream {
@@ -124,6 +130,7 @@
 }
 
 - (void)showReconnectFailure:(NSString *)message {
+    [self recordDiagnosticError:@"reconnect_failed"];
     [self stopStream];
     [_reconnectState fail];
     _streamState = LMStreamStateFailed;
@@ -154,6 +161,8 @@
     _streamMan = [[StreamManager alloc] initWithConfig:_reconnectConfig
                                              renderView:_streamView
                                     connectionCallbacks:self];
+    [_streamMan setReconnectCount:_reconnectState.retryCount];
+    [_streamMan setLastError:_lastDiagnosticError];
     NSOperationQueue *opQueue = [[NSOperationQueue alloc] init];
     [opQueue addOperation:_streamMan];
 }
@@ -565,6 +574,7 @@
     Log(LOG_I, @"Connection terminated: %d", errorCode);
 
     if ([self usesReconnectProfile] && !_stoppingStream && errorCode != ML_ERROR_GRACEFUL_TERMINATION) {
+        [self recordDiagnosticError:@"connection_terminated"];
         dispatch_async(dispatch_get_main_queue(), ^{
             [self beginReconnect];
         });
@@ -667,6 +677,7 @@
 
 - (void) stageFailed:(const char*)stageName withError:(int)errorCode portTestFlags:(int)portTestFlags {
     Log(LOG_I, @"Stage %s failed: %d", stageName, errorCode);
+    [self recordDiagnosticError:@"stage_failed"];
 
     if ([self usesReconnectProfile] && _reconnectState.state == LMStreamStateReconnecting && !_stoppingStream) {
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -707,6 +718,7 @@
 
 - (void) launchFailed:(NSString*)message {
     Log(LOG_I, @"Launch failed: %@", message);
+    [self recordDiagnosticError:@"launch_failed"];
 
     [self cleanupStreamInputOnMainThread];
 

@@ -30,3 +30,19 @@ git submodule update --init --recursive
 Install Xcode from the [App Store page](https://apps.apple.com/us/app/xcode/id497799835), then open `Moonlight.xcodeproj` in Xcode. The iOS targets declare an iOS 12.0 deployment target.
 
 An iOS device build requires macOS and Xcode, even when signing and provisioning are handled separately. To run on a real device, configure the Team and a unique Bundle Identifier under the target's **Signing & Capabilities** settings, then select the device and run the app.
+
+## Second-Monitor Validation
+
+The second-monitor path targets an existing virtual display selected by host/profile identity. Its conservative starting profile is H.264 at `1280x720 @ 30 FPS`; `1920x1080 @ 30 FPS` is an explicit experiment, not a claimed iPad Air 1 baseline. The stable iPad Air 1 mode is `NOT MEASURED` until a physical-device run records it.
+
+Use the validation matrix in `docs/superpowers/validation/second-monitor-test-matrix.md`. It distinguishes simulator checks from iPad Air 1 checks and records unavailable work as `BLOCKED/NOT RUN`. The simulator cannot validate VDD hotplug, Wi-Fi recovery, or physical touch behavior.
+
+Available macOS commands are:
+
+```sh
+xcodebuild test -project Moonlight.xcodeproj -scheme Moonlight -destination 'platform=iOS Simulator,name=iPad (5th generation)'
+xcodebuild -project Moonlight.xcodeproj -scheme Moonlight -configuration Debug -sdk iphonesimulator build
+xcodebuild archive -project Moonlight.xcodeproj -scheme Moonlight -configuration Release -sdk iphoneos -archivePath build/Moonlight.xcarchive CODE_SIGNING_ALLOWED=NO
+```
+
+The commands above were not run on Windows when Xcode was unavailable; no simulator or device build is claimed here.

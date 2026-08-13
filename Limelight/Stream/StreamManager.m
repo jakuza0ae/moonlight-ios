@@ -69,6 +69,44 @@
 
 @end
 
+@implementation LMStreamDiagnostics
+@end
+
+static NSString *LMRedactedDiagnosticError(NSString *error) {
+    if (error.length == 0) {
+        return @"none";
+    }
+
+    NSArray<NSString *> *safeErrors = @[@"none", @"connection_terminated", @"stage_failed", @"launch_failed", @"reconnect_failed"];
+    if ([safeErrors containsObject:error]) {
+        return error;
+    }
+    return @"redacted";
+}
+
+NSString *LMFormatSecondMonitorDiagnostics(LMStreamDiagnostics *diagnostics) {
+    if (diagnostics == nil) {
+        return @"Diagnostics unavailable.";
+    }
+
+    NSString *rtt = diagnostics.rttMs >= 0 ? [NSString stringWithFormat:@"%ld ms", (long)diagnostics.rttMs] : @"unavailable";
+    NSString *droppedFrames = diagnostics.droppedFrames >= 0 ? [NSString stringWithFormat:@"%ld", (long)diagnostics.droppedFrames] : @"unavailable";
+    return [NSString stringWithFormat:@"Host display: %@\nMapped output: %@\nCapture backend: %@\nEncoder: %@\nCodec: %@\nResolution: %ldx%ld\nFPS: %.2f\nBitrate: %ld kbps\nRTT: %@\nDropped frames: %@\nReconnects: %ld\nLast error: %@",
+            diagnostics.hostDisplayID ?: @"unavailable",
+            diagnostics.mappedOutput ?: @"unavailable",
+            diagnostics.captureBackend ?: @"unavailable",
+            diagnostics.encoder ?: @"unavailable",
+            diagnostics.codec ?: @"unavailable",
+            (long)diagnostics.width,
+            (long)diagnostics.height,
+            diagnostics.fps,
+            (long)diagnostics.bitrateKbps,
+            rtt,
+            droppedFrames,
+            (long)diagnostics.reconnectCount,
+            LMRedactedDiagnosticError(diagnostics.lastError)];
+}
+
 @implementation StreamManager {
     StreamConfiguration* _config;
 
@@ -78,6 +116,8 @@
     NSError *_configurationError;
     LMStreamCallbackProxy *_callbackProxy;
     BOOL _stopped;
+    NSInteger _reconnectCount;
+    NSString *_lastError;
 }
 
 - (id) initWithConfig:(StreamConfiguration*)config renderView:(UIView*)view connectionCallbacks:(id<ConnectionCallbacks>)callbacks {
@@ -194,6 +234,14 @@
     }
 }
 
+- (void)setReconnectCount:(NSInteger)reconnectCount {
+    _reconnectCount = MAX(0, reconnectCount);
+}
+
+- (void)setLastError:(NSString *)lastError {
+    _lastError = [lastError copy];
+}
+
 - (BOOL) launchApp:(HttpManager*)hMan receiveSessionUrl:(NSString**)sessionUrl {
     HttpResponse* launchResp = [[HttpResponse alloc] init];
     [hMan executeRequestSynchronously:[HttpRequest requestForResponse:launchResp withUrlRequest:[hMan newLaunchOrResumeRequest:@"launch" config:_config]]];
@@ -230,46 +278,82 @@
     return TRUE;
 }
 
-- (NSString*) getStatsOverlayText {
+- (LMStreamDiagnostics *)getDiagnostics {
+    LMStreamDiagnostics *diagnostics = [[LMStreamDiagnostics alloc] init];
+    diagnostics.hostDisplayID = @"unavailable";
+    diagnostics.mappedOutput = @"unavailable";
+    diagnostics.captureBackend = @"unavailable";
+    diagnostics.encoder = @"unavailable";
+    diagnostics.width = _config.width;
+    diagnostics.height = _config.height;
+    diagnostics.bitrateKbps = _config.bitRate;
+    diagnostics.rttMs = -1;
+    diagnostics.droppedFrames = -1;
+    diagnostics.reconnectCount = _reconnectCount;
+    diagnostics.lastError = _lastError ?: @"none";
+    diagnostics.codec = [_connection getActiveCodecName] ?: @"unavailable";
+
     video_stats_t stats;
-    
+    if (_connection == nil || ![_connection getVideoStats:&stats]) {
+        return diagnostics;
+    }
+
+    CFTimeInterval interval = stats.endTime - stats.startTime;
+    if (interval > 0) {
+        diagnostics.fps = stats.totalFrames / interval;
+    }
+    diagnostics.droppedFrames = stats.networkDroppedFrames;
+
+    uint32_t rtt, variance;
+    if (LiGetEstimatedRttInfo(&rtt, &variance)) {
+        diagnostics.rttMs = (NSInteger)rtt;
+    }
+    return diagnostics;
+}
+
+- (NSString*) getStatsOverlayText {
     if (!_connection) {
         return nil;
     }
-    
-    if (![_connection getVideoStats:&stats]) {
-        return nil;
+
+    if (_config.profile == nil || _config.profile.mode != LMStreamModeSecondMonitor) {
+        video_stats_t stats;
+        if (![_connection getVideoStats:&stats]) {
+            return nil;
+        }
+
+        uint32_t rtt, variance;
+        NSString *latencyString;
+        if (LiGetEstimatedRttInfo(&rtt, &variance)) {
+            latencyString = [NSString stringWithFormat:@"%u ms (variance: %u ms)", rtt, variance];
+        }
+        else {
+            latencyString = @"N/A";
+        }
+
+        NSString *hostProcessingString;
+        if (stats.framesWithHostProcessingLatency != 0) {
+            hostProcessingString = [NSString stringWithFormat:@"\nHost processing latency min/max/avg: %.1f/%.1f/%.1f ms",
+                                    stats.minHostProcessingLatency / 10.f,
+                                    stats.maxHostProcessingLatency / 10.f,
+                                    (float)stats.totalHostProcessingLatency / stats.framesWithHostProcessingLatency / 10.f];
+        }
+        else {
+            hostProcessingString = @"";
+        }
+
+        float interval = stats.endTime - stats.startTime;
+        return [NSString stringWithFormat:@"Video stream: %dx%d %.2f FPS (Codec: %@)\nFrames dropped by your network connection: %.2f%%\nAverage network latency: %@%@",
+                _config.width,
+                _config.height,
+                stats.totalFrames / interval,
+                [_connection getActiveCodecName],
+                stats.networkDroppedFrames / interval,
+                latencyString,
+                hostProcessingString];
     }
-    
-    uint32_t rtt, variance;
-    NSString* latencyString;
-    if (LiGetEstimatedRttInfo(&rtt, &variance)) {
-        latencyString = [NSString stringWithFormat:@"%u ms (variance: %u ms)", rtt, variance];
-    }
-    else {
-        latencyString = @"N/A";
-    }
-    
-    NSString* hostProcessingString;
-    if (stats.framesWithHostProcessingLatency != 0) {
-        hostProcessingString = [NSString stringWithFormat:@"\nHost processing latency min/max/avg: %.1f/%.1f/%.1f ms",
-                                stats.minHostProcessingLatency / 10.f,
-                                stats.maxHostProcessingLatency / 10.f,
-                                (float)stats.totalHostProcessingLatency / stats.framesWithHostProcessingLatency / 10.f];
-    }
-    else {
-        hostProcessingString = @"";
-    }
-    
-    float interval = stats.endTime - stats.startTime;
-    return [NSString stringWithFormat:@"Video stream: %dx%d %.2f FPS (Codec: %@)\nFrames dropped by your network connection: %.2f%%\nAverage network latency: %@%@",
-            _config.width,
-            _config.height,
-            stats.totalFrames / interval,
-            [_connection getActiveCodecName],
-            stats.networkDroppedFrames / interval,
-            latencyString,
-            hostProcessingString];
+
+    return LMFormatSecondMonitorDiagnostics([self getDiagnostics]);
 }
 
 @end
