@@ -36,11 +36,32 @@ NSTimeInterval const LMReconnectMaximumDelay = 8.0;
 + (LMDeviceCapabilityProfile)currentDeviceCapabilityProfile {
     struct utsname systemInfo;
     uname(&systemInfo);
-    NSString *machine = [NSString stringWithUTF8String:systemInfo.machine];
-    if ([machine hasPrefix:@"iPad4,"]) {
+    return [self capabilityProfileForMachineIdentifier:[NSString stringWithUTF8String:systemInfo.machine]];
+}
+
++ (LMDeviceCapabilityProfile)capabilityProfileForMachineIdentifier:(NSString *)machineIdentifier {
+    if ([machineIdentifier isEqualToString:@"iPad4,1"] ||
+        [machineIdentifier isEqualToString:@"iPad4,2"] ||
+        [machineIdentifier isEqualToString:@"iPad4,3"]) {
         return LMDeviceCapabilityProfileIPadAir;
     }
     return LMDeviceCapabilityProfileGeneric;
+}
+
++ (NSArray<NSValue *> *)supportedResolutionsForCapabilityProfile:(LMDeviceCapabilityProfile)capabilityProfile
+                                           experimental1080pEnabled:(BOOL)experimental1080pEnabled {
+    if (capabilityProfile == LMDeviceCapabilityProfileIPadAir) {
+        NSMutableArray<NSValue *> *resolutions = [NSMutableArray arrayWithObject:[NSValue valueWithCGSize:CGSizeMake(1280, 720)]];
+        if (experimental1080pEnabled) {
+            [resolutions addObject:[NSValue valueWithCGSize:CGSizeMake(1920, 1080)]];
+        }
+        return resolutions;
+    }
+
+    return @[
+        [NSValue valueWithCGSize:CGSizeMake(1280, 720)],
+        [NSValue valueWithCGSize:CGSizeMake(1920, 1080)],
+    ];
 }
 
 + (instancetype)profileWithDictionary:(NSDictionary *)dictionary {
@@ -130,8 +151,20 @@ NSTimeInterval const LMReconnectMaximumDelay = 8.0;
         }
     };
 
-    if (self.resolution.width <= 0 || self.resolution.height <= 0 || self.fps <= 0 || self.bitrate <= 0) {
-        setError(LMProfileValidationErrorInvalidValue, @"resolution", @"The stream profile contains an invalid numeric value.");
+    if (self.resolution.width <= 0) {
+        setError(LMProfileValidationErrorInvalidValue, @"width", @"The stream profile width must be positive.");
+        return NO;
+    }
+    if (self.resolution.height <= 0) {
+        setError(LMProfileValidationErrorInvalidValue, @"height", @"The stream profile height must be positive.");
+        return NO;
+    }
+    if (self.fps <= 0) {
+        setError(LMProfileValidationErrorInvalidValue, @"fps", @"The stream profile frame rate must be positive.");
+        return NO;
+    }
+    if (self.bitrate <= 0) {
+        setError(LMProfileValidationErrorInvalidValue, @"bitrate", @"The stream profile bitrate must be positive.");
         return NO;
     }
     if (self.codec < LMStreamCodecH264 || self.codec > LMStreamCodecAV1) {
@@ -164,6 +197,33 @@ NSTimeInterval const LMReconnectMaximumDelay = 8.0;
         *error = nil;
     }
     return YES;
+}
+
+@end
+
+@implementation LMStreamProfileStore
+
++ (NSString *)defaultsKeyForHost:(NSString *)hostUuid profileName:(NSString *)profileName {
+    if (hostUuid.length == 0 || profileName.length == 0) {
+        return nil;
+    }
+    return [NSString stringWithFormat:@"Moonlight.StreamProfile.%@.%@", hostUuid, profileName];
+}
+
++ (LMStreamProfile *)loadProfileForHost:(NSString *)hostUuid profileName:(NSString *)profileName {
+    NSString *key = [self defaultsKeyForHost:hostUuid profileName:profileName];
+    if (key == nil) {
+        return nil;
+    }
+    return [LMStreamProfile profileWithDictionary:[[NSUserDefaults standardUserDefaults] dictionaryForKey:key]];
+}
+
++ (void)saveProfile:(LMStreamProfile *)profile forHost:(NSString *)hostUuid profileName:(NSString *)profileName {
+    NSString *key = [self defaultsKeyForHost:hostUuid profileName:profileName];
+    if (key == nil || profile == nil) {
+        return;
+    }
+    [[NSUserDefaults standardUserDefaults] setObject:profile.dictionaryRepresentation forKey:key];
 }
 
 @end
@@ -234,6 +294,36 @@ NSTimeInterval const LMReconnectMaximumDelay = 8.0;
         _inputMode = LMInputModeNativeTouch;
     }
     return self;
+}
+
+- (id)copyWithZone:(NSZone *)zone {
+    StreamConfiguration *copy = [[[self class] allocWithZone:zone] init];
+    copy.host = [self.host copy];
+    copy.httpsPort = self.httpsPort;
+    copy.appVersion = [self.appVersion copy];
+    copy.gfeVersion = [self.gfeVersion copy];
+    copy.appID = [self.appID copy];
+    copy.appName = [self.appName copy];
+    copy.rtspSessionUrl = [self.rtspSessionUrl copy];
+    copy.serverCodecModeSupport = self.serverCodecModeSupport;
+    copy.width = self.width;
+    copy.height = self.height;
+    copy.frameRate = self.frameRate;
+    copy.bitRate = self.bitRate;
+    copy.riKeyId = self.riKeyId;
+    copy.riKey = [self.riKey copy];
+    copy.gamepadMask = self.gamepadMask;
+    copy.optimizeGameSettings = self.optimizeGameSettings;
+    copy.playAudioOnPC = self.playAudioOnPC;
+    copy.swapABXYButtons = self.swapABXYButtons;
+    copy.audioConfiguration = self.audioConfiguration;
+    copy.supportedVideoFormats = self.supportedVideoFormats;
+    copy.multiController = self.multiController;
+    copy.useFramePacing = self.useFramePacing;
+    copy.serverCert = [self.serverCert copy];
+    copy.inputMode = self.inputMode;
+    copy.profile = [self.profile copy];
+    return copy;
 }
 
 - (BOOL)applyProfile:(LMStreamProfile *)profile error:(NSError **)error {

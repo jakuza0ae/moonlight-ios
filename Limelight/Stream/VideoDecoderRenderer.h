@@ -14,12 +14,15 @@
 
 @interface VideoDecoderRenderer : NSObject
 
+@property (nonatomic, copy) void (^decoderFailureHandler)(int errorCode);
+
 - (id)initWithView:(UIView*)view callbacks:(id<ConnectionCallbacks>)callbacks streamAspectRatio:(float)aspectRatio useFramePacing:(BOOL)useFramePacing;
 
 - (void)setupWithVideoFormat:(int)videoFormat width:(int)videoWidth height:(int)videoHeight frameRate:(int)frameRate;
 - (void)start;
 - (void)stop;
 - (void)setHdrMode:(BOOL)enabled;
+- (void)reportDecoderFailure:(int)errorCode;
 
 - (int)submitDecodeBuffer:(unsigned char *)data length:(int)length bufferType:(int)bufferType decodeUnit:(PDECODE_UNIT)du;
 

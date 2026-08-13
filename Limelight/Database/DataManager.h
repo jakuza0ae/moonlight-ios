@@ -13,6 +13,9 @@
 
 @interface DataManager : NSObject
 
+@property (nonatomic, readonly, getter=isAvailable) BOOL available;
+@property (nonatomic, readonly) NSError *storeError;
+
 - (void) saveSettingsWithBitrate:(NSInteger)bitrate
                        framerate:(NSInteger)framerate
                           height:(NSInteger)height

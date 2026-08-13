@@ -100,6 +100,17 @@ extern int ff_isom_write_av1c(AVIOContext *pb, const uint8_t *buf, int size,
     self->frameRate = frameRate;
 }
 
+- (void)reportDecoderFailure:(int)errorCode {
+    if (self.decoderFailureHandler != nil) {
+        self.decoderFailureHandler(errorCode);
+    }
+    else {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self->_callbacks connectionTerminated:errorCode];
+        });
+    }
+}
+
 - (void)start
 {
     _displayLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(displayLinkCallback:)];
@@ -511,9 +522,7 @@ int DrSubmitDecodeUnit(PDECODE_UNIT decodeUnit);
             Log(LOG_E, @"Unsupported video codec format: 0x%08x", videoFormat);
             if (!_decoderFailureReported) {
                 _decoderFailureReported = YES;
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    [self->_callbacks connectionTerminated:ML_ERROR_FRAME_CONVERSION];
-                });
+                [self reportDecoderFailure:ML_ERROR_FRAME_CONVERSION];
             }
             free(data);
             return DR_NEED_IDR;

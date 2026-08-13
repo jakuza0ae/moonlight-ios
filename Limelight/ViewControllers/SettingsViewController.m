@@ -18,6 +18,7 @@
     NSInteger _bitrate;
     NSInteger _lastSelectedResolutionIndex;
     BOOL _secondMonitorProfileMode;
+    LMStreamProfile *_editingSecondMonitorProfile;
 }
 
 @dynamic overrideUserInterfaceStyle;
@@ -138,7 +139,21 @@ BOOL isCustomResolution(CGSize res) {
     
     DataManager* dataMan = [[DataManager alloc] init];
     TemporarySettings* currentSettings = [dataMan getSettings];
+    if (!dataMan.isAvailable || currentSettings == nil) {
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Settings Unavailable"
+                                                                           message:dataMan.storeError.localizedDescription ?: @"Moonlight could not open its settings store."
+                                                                    preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:alert animated:YES completion:nil];
+        return;
+    }
+
+    NSString *hostUuid = [[NSUserDefaults standardUserDefaults] stringForKey:@"Moonlight.SecondMonitor.HostUUID"];
     _secondMonitorProfileMode = [[NSUserDefaults standardUserDefaults] boolForKey:@"Moonlight.SecondMonitor.SettingsMode"];
+    _editingSecondMonitorProfile = _secondMonitorProfileMode && hostUuid.length != 0 ? [dataMan getSecondMonitorProfileForHost:hostUuid] : nil;
+    if (_secondMonitorProfileMode && _editingSecondMonitorProfile == nil) {
+        _editingSecondMonitorProfile = [LMStreamProfile defaultSecondMonitorProfile];
+    }
 
     // Task 7 owns the profile picker. When that picker opens this controller
     // for a second-monitor profile, remove values the iPad Air cannot use.
@@ -155,8 +170,9 @@ BOOL isCustomResolution(CGSize res) {
         [self.hdrSelector setEnabled:NO];
     }
     
-    // Ensure we pick a bitrate that falls exactly onto a slider notch
-    _bitrate = bitrateTable[[self getSliderValueForBitrate:[currentSettings.bitrate intValue]]];
+    // Ensure we pick a bitrate that falls exactly onto a slider notch.
+    NSInteger initialBitrate = _editingSecondMonitorProfile != nil ? _editingSecondMonitorProfile.bitrate : [currentSettings.bitrate intValue];
+    _bitrate = bitrateTable[[self getSliderValueForBitrate:initialBitrate]];
 
     // Get the size of the screen with and without safe area insets
     UIWindow *window = UIApplication.sharedApplication.windows.firstObject;
@@ -182,9 +198,18 @@ BOOL isCustomResolution(CGSize res) {
     if (!isCustomResolution(resolutionTable[6])) {
         resolutionTable[6] = CGSizeMake(0, 0);
     }
+
+    if (_secondMonitorProfileMode && [LMStreamProfile currentDeviceCapabilityProfile] == LMDeviceCapabilityProfileIPadAir) {
+        // The second segment is the explicit opt-in control for experimental
+        // 1080p30. It is not part of the default supported resolution set.
+        [self.resolutionSelector removeAllSegments];
+        [self.resolutionSelector insertSegmentWithTitle:@"1280 x 720" atIndex:0 animated:NO];
+        [self.resolutionSelector insertSegmentWithTitle:@"1920 x 1080 (Experimental)" atIndex:1 animated:NO];
+    }
     
     NSInteger framerate;
-    switch ([currentSettings.framerate integerValue]) {
+    NSInteger initialFrameRate = _editingSecondMonitorProfile != nil ? _editingSecondMonitorProfile.fps : [currentSettings.framerate integerValue];
+    switch (initialFrameRate) {
         case 30:
             framerate = 0;
             break;
@@ -200,12 +225,18 @@ BOOL isCustomResolution(CGSize res) {
         framerate = 0;
     }
 
+    CGSize initialResolution = _editingSecondMonitorProfile != nil ? _editingSecondMonitorProfile.resolution : CGSizeMake([currentSettings.width integerValue], [currentSettings.height integerValue]);
     NSInteger resolution = 1;
-    for (int i = 0; i < RESOLUTION_TABLE_SIZE; i++) {
-        if ((int) resolutionTable[i].height == [currentSettings.height intValue]
-            && (int) resolutionTable[i].width == [currentSettings.width intValue]) {
-            resolution = i;
-            break;
+    if (_secondMonitorProfileMode && [LMStreamProfile currentDeviceCapabilityProfile] == LMDeviceCapabilityProfileIPadAir) {
+        resolution = initialResolution.width == 1920 && initialResolution.height == 1080 ? 1 : 0;
+    }
+    if (!(_secondMonitorProfileMode && [LMStreamProfile currentDeviceCapabilityProfile] == LMDeviceCapabilityProfileIPadAir)) {
+        for (int i = 0; i < RESOLUTION_TABLE_SIZE; i++) {
+            if ((int) resolutionTable[i].height == (int)initialResolution.height
+                && (int) resolutionTable[i].width == (int)initialResolution.width) {
+                resolution = i;
+                break;
+            }
         }
     }
 
@@ -356,6 +387,13 @@ BOOL isCustomResolution(CGSize res) {
 }
 
 - (void) newResolutionChosen {
+    if (_secondMonitorProfileMode && [LMStreamProfile currentDeviceCapabilityProfile] == LMDeviceCapabilityProfileIPadAir) {
+        [self updateBitrate];
+        [self updateResolutionDisplayViewText];
+        _lastSelectedResolutionIndex = [self.resolutionSelector selectedSegmentIndex];
+        return;
+    }
+
     BOOL lastSegmentSelected = [self.resolutionSelector selectedSegmentIndex] + 1 == [self.resolutionSelector numberOfSegments];
     if (lastSegmentSelected) {
         [self promptCustomResolutionDialog];
@@ -526,6 +564,10 @@ BOOL isCustomResolution(CGSize res) {
 }
 
 - (NSInteger) getChosenStreamHeight {
+    if (_secondMonitorProfileMode && [LMStreamProfile currentDeviceCapabilityProfile] == LMDeviceCapabilityProfileIPadAir) {
+        return self.resolutionSelector.selectedSegmentIndex == 1 ? 1080 : 720;
+    }
+
     // because the 4k resolution can be removed
     BOOL lastSegmentSelected = [self.resolutionSelector selectedSegmentIndex] + 1 == [self.resolutionSelector numberOfSegments];
     if (lastSegmentSelected) {
@@ -536,6 +578,10 @@ BOOL isCustomResolution(CGSize res) {
 }
 
 - (NSInteger) getChosenStreamWidth {
+    if (_secondMonitorProfileMode && [LMStreamProfile currentDeviceCapabilityProfile] == LMDeviceCapabilityProfileIPadAir) {
+        return self.resolutionSelector.selectedSegmentIndex == 1 ? 1920 : 1280;
+    }
+
     // because the 4k resolution can be removed
     BOOL lastSegmentSelected = [self.resolutionSelector selectedSegmentIndex] + 1 == [self.resolutionSelector numberOfSegments];
     if (lastSegmentSelected) {
@@ -563,7 +609,7 @@ BOOL isCustomResolution(CGSize res) {
     BOOL enableHdr = [self.hdrSelector selectedSegmentIndex] == 1;
 
     if (_secondMonitorProfileMode) {
-        LMStreamProfile *profile = [LMStreamProfile defaultSecondMonitorProfile];
+        LMStreamProfile *profile = [_editingSecondMonitorProfile copy] ?: [LMStreamProfile defaultSecondMonitorProfile];
         profile.resolution = CGSizeMake(width, height);
         profile.fps = framerate;
         profile.bitrate = _bitrate;
@@ -571,6 +617,9 @@ BOOL isCustomResolution(CGSize res) {
             (preferredCodec == CODEC_PREF_H264 ? LMStreamCodecH264 :
             (preferredCodec == CODEC_PREF_HEVC ? LMStreamCodecHEVC : LMStreamCodecAV1));
         profile.hdrEnabled = enableHdr;
+        if ([LMStreamProfile currentDeviceCapabilityProfile] == LMDeviceCapabilityProfileIPadAir) {
+            profile.experimental1080pEnabled = self.resolutionSelector.selectedSegmentIndex == 1;
+        }
         NSError *profileError = nil;
         if (![profile validateForCapabilityProfile:[LMStreamProfile currentDeviceCapabilityProfile] error:&profileError]) {
             Log(LOG_W, @"Rejected second-monitor profile settings: %@", profileError.localizedDescription);

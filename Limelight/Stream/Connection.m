@@ -27,6 +27,9 @@
     char _appVersionString[32];
     char _gfeVersionString[32];
     char _rtspSessionUrl[128];
+    BOOL _terminationRequested;
+    BOOL _terminationCompleted;
+    void (^_terminationCompletion)(void);
 }
 
 static NSLock* initLock;
@@ -42,8 +45,32 @@ static SDL_AudioDeviceID audioDevice;
 static OPUS_MULTISTREAM_CONFIGURATION audioConfig;
 static void* audioBuffer;
 static int audioFrameSize;
+static BOOL audioRendererEnabled = YES;
 
 static VideoDecoderRenderer* renderer;
+
+BOOL LMShouldInitializeAudioRenderer(StreamConfiguration *config)
+{
+    return config.profile == nil || config.profile.audioPolicy != LMAudioPolicyDisabled;
+}
+
+int ArDisabledInit(int audioConfiguration, POPUS_MULTISTREAM_CONFIGURATION opusConfig, void* context, int flags)
+{
+    (void)audioConfiguration;
+    (void)opusConfig;
+    (void)context;
+    (void)flags;
+    return 0;
+}
+
+void ArDisabledStart(void) { }
+void ArDisabledStop(void) { }
+void ArDisabledCleanup(void) { }
+void ArDisabledDecodeAndPlaySample(char* sampleData, int sampleLength)
+{
+    (void)sampleData;
+    (void)sampleLength;
+}
 
 int DrDecoderSetup(int videoFormat, int width, int height, int redrawRate, void* context, int drFlags)
 {
@@ -353,6 +380,27 @@ void ClSetControllerLED(uint16_t controllerNumber, uint8_t r, uint8_t g, uint8_t
 
 -(void) terminate
 {
+    [self terminateWithCompletion:nil];
+}
+
+-(void) terminateWithCompletion:(void (^)(void))completion
+{
+    @synchronized (self) {
+        if (_terminationRequested) {
+            if (completion != nil) {
+                if (_terminationCompleted) {
+                    dispatch_async(dispatch_get_main_queue(), completion);
+                }
+                else {
+                    _terminationCompletion = [completion copy];
+                }
+            }
+            return;
+        }
+        _terminationRequested = YES;
+        _terminationCompletion = [completion copy];
+    }
+
     // Interrupt any action blocking LiStartConnection(). This is
     // thread-safe and done outside initLock on purpose, since we
     // won't be able to acquire it if LiStartConnection is in
@@ -366,6 +414,15 @@ void ClSetControllerLED(uint16_t controllerNumber, uint8_t r, uint8_t g, uint8_t
         [initLock lock];
         LiStopConnection();
         [initLock unlock];
+        void (^terminationCompletion)(void);
+        @synchronized (self) {
+            self->_terminationCompleted = YES;
+            terminationCompletion = [self->_terminationCompletion copy];
+            self->_terminationCompletion = nil;
+        }
+        if (terminationCompletion != nil) {
+            dispatch_async(dispatch_get_main_queue(), terminationCompletion);
+        }
     });
 }
 
@@ -414,6 +471,15 @@ void ClSetControllerLED(uint16_t controllerNumber, uint8_t r, uint8_t g, uint8_t
 
     renderer = myRenderer;
     _callbacks = callbacks;
+    audioRendererEnabled = LMShouldInitializeAudioRenderer(config);
+    __weak Connection *weakSelf = self;
+    myRenderer.decoderFailureHandler = ^(int errorCode) {
+        Connection *strongSelf = weakSelf;
+        if (strongSelf != nil) {
+            [strongSelf terminate];
+            [_callbacks connectionTerminated:errorCode];
+        }
+    };
 
     LiInitializeStreamConfiguration(&_streamConfig);
     _streamConfig.width = config.width;
@@ -453,10 +519,19 @@ void ClSetControllerLED(uint16_t controllerNumber, uint8_t r, uint8_t g, uint8_t
                                 CAPABILITY_REFERENCE_FRAME_INVALIDATION_AV1;
 
     LiInitializeAudioCallbacks(&_arCallbacks);
-    _arCallbacks.init = ArInit;
-    _arCallbacks.cleanup = ArCleanup;
-    _arCallbacks.decodeAndPlaySample = ArDecodeAndPlaySample;
-    _arCallbacks.capabilities = CAPABILITY_SUPPORTS_ARBITRARY_AUDIO_DURATION;
+    if (audioRendererEnabled) {
+        _arCallbacks.init = ArInit;
+        _arCallbacks.cleanup = ArCleanup;
+        _arCallbacks.decodeAndPlaySample = ArDecodeAndPlaySample;
+        _arCallbacks.capabilities = CAPABILITY_SUPPORTS_ARBITRARY_AUDIO_DURATION;
+    }
+    else {
+        _arCallbacks.init = ArDisabledInit;
+        _arCallbacks.start = ArDisabledStart;
+        _arCallbacks.stop = ArDisabledStop;
+        _arCallbacks.cleanup = ArDisabledCleanup;
+        _arCallbacks.decodeAndPlaySample = ArDisabledDecodeAndPlaySample;
+    }
 
     LiInitializeConnectionCallbacks(&_clCallbacks);
     _clCallbacks.stageStarting = ClStageStarting;

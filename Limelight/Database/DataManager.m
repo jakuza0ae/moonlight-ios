@@ -13,10 +13,16 @@
 @implementation DataManager {
     NSManagedObjectContext *_managedObjectContext;
     AppDelegate *_appDelegate;
+    BOOL _available;
+    NSError *_storeError;
 }
+
+@synthesize available = _available;
+@synthesize storeError = _storeError;
 
 - (id) init {
     self = [super init];
+    _available = NO;
     
     // HACK: Avoid calling [UIApplication delegate] off the UI thread to keep
     // Main Thread Checker happy.
@@ -29,13 +35,26 @@
         });
     }
     
+    NSManagedObjectContext *parentContext = [_appDelegate managedObjectContext];
+    if (parentContext == nil) {
+        _storeError = [NSError errorWithDomain:@"com.moonlight.database"
+                                           code:1
+                                       userInfo:@{NSLocalizedDescriptionKey: @"Moonlight could not open its settings store."}];
+        Log(LOG_E, @"DataManager unavailable: %@", _storeError.localizedDescription);
+        return self;
+    }
+
     _managedObjectContext = [[NSManagedObjectContext alloc] initWithConcurrencyType:NSMainQueueConcurrencyType];
-    [_managedObjectContext setParentContext:[_appDelegate managedObjectContext]];
+    [_managedObjectContext setParentContext:parentContext];
+    _available = YES;
     
     return self;
 }
 
 - (void) updateUniqueId:(NSString*)uniqueId {
+    if (!_available) {
+        return;
+    }
     [_managedObjectContext performBlockAndWait:^{
         [self retrieveSettings].uniqueId = uniqueId;
         [self saveData];
@@ -44,6 +63,10 @@
 
 - (NSString*) getUniqueId {
     __block NSString *uid;
+
+    if (!_available) {
+        return nil;
+    }
     
     [_managedObjectContext performBlockAndWait:^{
         uid = [self retrieveSettings].uniqueId;
@@ -66,8 +89,11 @@
                   useFramePacing:(BOOL)useFramePacing
                        enableHdr:(BOOL)enableHdr
                   btMouseSupport:(BOOL)btMouseSupport
-               absoluteTouchMode:(BOOL)absoluteTouchMode
-                    statsOverlay:(BOOL)statsOverlay {
+                           absoluteTouchMode:(BOOL)absoluteTouchMode
+                     statsOverlay:(BOOL)statsOverlay {
+    if (!_available) {
+        return;
+    }
     
     [_managedObjectContext performBlockAndWait:^{
         Settings* settingsToSave = [self retrieveSettings];
@@ -93,6 +119,9 @@
 }
 
 - (void) updateHost:(TemporaryHost *)host {
+    if (!_available) {
+        return;
+    }
     [_managedObjectContext performBlockAndWait:^{
         // Add a new persistent managed object if one doesn't exist
         Host* parent = [self getHostForTemporaryHost:host withHostRecords:[self fetchRecords:@"Host"]];
@@ -109,6 +138,9 @@
 }
 
 - (void) updateAppsForExistingHost:(TemporaryHost *)host {
+    if (!_available) {
+        return;
+    }
     [_managedObjectContext performBlockAndWait:^{
         Host* parent = [self getHostForTemporaryHost:host withHostRecords:[self fetchRecords:@"Host"]];
         if (parent == nil) {
@@ -139,6 +171,10 @@
 
 - (TemporarySettings*) getSettings {
     __block TemporarySettings *tempSettings;
+
+    if (!_available) {
+        return nil;
+    }
     
     [_managedObjectContext performBlockAndWait:^{
         tempSettings = [[TemporarySettings alloc] initFromSettings:[self retrieveSettings]];
@@ -147,30 +183,12 @@
     return tempSettings;
 }
 
-- (NSString*) profileDefaultsKeyForHost:(NSString*)hostUuid profileName:(NSString*)profileName {
-    if (hostUuid.length == 0 || profileName.length == 0) {
-        return nil;
-    }
-    return [NSString stringWithFormat:@"Moonlight.StreamProfile.%@.%@", hostUuid, profileName];
-}
-
 - (LMStreamProfile*) getProfileForHost:(NSString*)hostUuid profileName:(NSString*)profileName {
-    NSString *key = [self profileDefaultsKeyForHost:hostUuid profileName:profileName];
-    if (key == nil) {
-        return [LMStreamProfile defaultSecondMonitorProfile];
-    }
-
-    LMStreamProfile *profile = [LMStreamProfile profileWithDictionary:[[NSUserDefaults standardUserDefaults] dictionaryForKey:key]];
-    return profile ?: [LMStreamProfile defaultSecondMonitorProfile];
+    return [LMStreamProfileStore loadProfileForHost:hostUuid profileName:profileName];
 }
 
 - (void) saveProfile:(LMStreamProfile*)profile forHost:(NSString*)hostUuid profileName:(NSString*)profileName {
-    NSString *key = [self profileDefaultsKeyForHost:hostUuid profileName:profileName];
-    if (key == nil || profile == nil) {
-        return;
-    }
-
-    [[NSUserDefaults standardUserDefaults] setObject:[profile dictionaryRepresentation] forKey:key];
+    [LMStreamProfileStore saveProfile:profile forHost:hostUuid profileName:profileName];
 }
 
 - (LMStreamProfile*) getSecondMonitorProfileForHost:(NSString*)hostUuid {
@@ -196,6 +214,9 @@
 }
 
 - (void) removeApp:(TemporaryApp*)app {
+    if (!_available) {
+        return;
+    }
     [_managedObjectContext performBlockAndWait:^{
         App* managedApp = [self getAppForTemporaryApp:app withAppRecords:[self fetchRecords:@"App"]];
         if (managedApp != nil) {
@@ -206,6 +227,9 @@
 }
 
 - (void) removeHost:(TemporaryHost*)host {
+    if (!_available) {
+        return;
+    }
     [_managedObjectContext performBlockAndWait:^{
         Host* managedHost = [self getHostForTemporaryHost:host withHostRecords:[self fetchRecords:@"Host"]];
         if (managedHost != nil) {
@@ -216,6 +240,9 @@
 }
 
 - (void) saveData {
+    if (!_available) {
+        return;
+    }
     NSError* error;
     if ([_managedObjectContext hasChanges] && ![_managedObjectContext save:&error]) {
         Log(LOG_E, @"Unable to save hosts to database: %@", error);
@@ -226,6 +253,10 @@
 
 - (NSArray*) getHosts {
     __block NSMutableArray *tempHosts = [[NSMutableArray alloc] init];
+
+    if (!_available) {
+        return tempHosts;
+    }
     
     [_managedObjectContext performBlockAndWait:^{
         NSArray *hosts = [self fetchRecords:@"Host"];
@@ -263,6 +294,10 @@
 
 - (NSArray*) fetchRecords:(NSString*)entityName {
     NSArray* fetchedRecords;
+
+    if (!_available || _managedObjectContext == nil) {
+        return @[];
+    }
     
     NSFetchRequest* fetchRequest = [[NSFetchRequest alloc] init];
     NSEntityDescription* entity = [NSEntityDescription entityForName:entityName inManagedObjectContext:_managedObjectContext];

@@ -23,10 +23,13 @@ typedef struct {
     int minHostProcessingLatency;
 } video_stats_t;
 
+BOOL LMShouldInitializeAudioRenderer(StreamConfiguration *config);
+
 @interface Connection : NSOperation <NSStreamDelegate>
 
 -(id) initWithConfig:(StreamConfiguration*)config renderer:(VideoDecoderRenderer*)myRenderer connectionCallbacks:(id<ConnectionCallbacks>)callbacks;
 -(void) terminate;
+-(void) terminateWithCompletion:(void (^)(void))completion;
 -(void) main;
 -(BOOL) getVideoStats:(video_stats_t*)stats;
 -(NSString*) getActiveCodecName;

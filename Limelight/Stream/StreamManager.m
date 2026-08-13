@@ -19,6 +19,56 @@
 
 #include <Limelight.h>
 
+@interface LMStreamCallbackProxy : NSObject <ConnectionCallbacks>
+
+@property (nonatomic, weak) id<ConnectionCallbacks> target;
+@property (nonatomic) BOOL active;
+
+- (instancetype)initWithTarget:(id<ConnectionCallbacks>)target;
+
+@end
+
+@implementation LMStreamCallbackProxy
+
+- (instancetype)initWithTarget:(id<ConnectionCallbacks>)target {
+    self = [super init];
+    if (self != nil) {
+        _target = target;
+        _active = YES;
+    }
+    return self;
+}
+
+- (BOOL)shouldForward {
+    return self.active && self.target != nil;
+}
+
+- (void)connectionStarted { if ([self shouldForward]) [self.target connectionStarted]; }
+- (void)connectionTerminated:(int)errorCode { if ([self shouldForward]) [self.target connectionTerminated:errorCode]; }
+- (void)stageStarting:(const char *)stageName { if ([self shouldForward]) [self.target stageStarting:stageName]; }
+- (void)stageComplete:(const char *)stageName { if ([self shouldForward]) [self.target stageComplete:stageName]; }
+- (void)stageFailed:(const char *)stageName withError:(int)errorCode portTestFlags:(int)portTestFlags {
+    if ([self shouldForward]) [self.target stageFailed:stageName withError:errorCode portTestFlags:portTestFlags];
+}
+- (void)launchFailed:(NSString *)message { if ([self shouldForward]) [self.target launchFailed:message]; }
+- (void)rumble:(unsigned short)controllerNumber lowFreqMotor:(unsigned short)lowFreqMotor highFreqMotor:(unsigned short)highFreqMotor {
+    if ([self shouldForward]) [self.target rumble:controllerNumber lowFreqMotor:lowFreqMotor highFreqMotor:highFreqMotor];
+}
+- (void)connectionStatusUpdate:(int)status { if ([self shouldForward]) [self.target connectionStatusUpdate:status]; }
+- (void)setHdrMode:(bool)enabled { if ([self shouldForward]) [self.target setHdrMode:enabled]; }
+- (void)rumbleTriggers:(uint16_t)controllerNumber leftTrigger:(uint16_t)leftTrigger rightTrigger:(uint16_t)rightTrigger {
+    if ([self shouldForward]) [self.target rumbleTriggers:controllerNumber leftTrigger:leftTrigger rightTrigger:rightTrigger];
+}
+- (void)setMotionEventState:(uint16_t)controllerNumber motionType:(uint8_t)motionType reportRateHz:(uint16_t)reportRateHz {
+    if ([self shouldForward]) [self.target setMotionEventState:controllerNumber motionType:motionType reportRateHz:reportRateHz];
+}
+- (void)setControllerLed:(uint16_t)controllerNumber r:(uint8_t)r g:(uint8_t)g b:(uint8_t)b {
+    if ([self shouldForward]) [self.target setControllerLed:controllerNumber r:r g:g b:b];
+}
+- (void)videoContentShown { if ([self shouldForward]) [self.target videoContentShown]; }
+
+@end
+
 @implementation StreamManager {
     StreamConfiguration* _config;
 
@@ -26,13 +76,16 @@
     id<ConnectionCallbacks> _callbacks;
     Connection* _connection;
     NSError *_configurationError;
+    LMStreamCallbackProxy *_callbackProxy;
+    BOOL _stopped;
 }
 
 - (id) initWithConfig:(StreamConfiguration*)config renderView:(UIView*)view connectionCallbacks:(id<ConnectionCallbacks>)callbacks {
     self = [super init];
     _config = config;
     _renderView = view;
-    _callbacks = callbacks;
+    _callbackProxy = [[LMStreamCallbackProxy alloc] initWithTarget:callbacks];
+    _callbacks = _callbackProxy;
     if (_config.profile != nil) {
         [_config applyProfile:_config.profile error:&_configurationError];
     }
@@ -42,6 +95,10 @@
 }
 
 - (void)main {
+    if (_stopped) {
+        return;
+    }
+
     if (_configurationError != nil) {
         [_callbacks launchFailed:_configurationError.localizedDescription];
         return;
@@ -108,6 +165,9 @@
     
     // Initializing the renderer must be done on the main thread
     dispatch_async(dispatch_get_main_queue(), ^{
+        if (self->_stopped) {
+            return;
+        }
         VideoDecoderRenderer* renderer = [[VideoDecoderRenderer alloc] initWithView:self->_renderView callbacks:self->_callbacks streamAspectRatio:(float)self->_config.width / (float)self->_config.height useFramePacing:self->_config.useFramePacing];
         self->_connection = [[Connection alloc] initWithConfig:self->_config renderer:renderer connectionCallbacks:self->_callbacks];
         NSOperationQueue* opQueue = [[NSOperationQueue alloc] init];
@@ -117,7 +177,21 @@
 
 - (void) stopStream
 {
-    [_connection terminate];
+    [self stopStreamWithCompletion:nil];
+}
+
+- (void) stopStreamWithCompletion:(void (^)(void))completion
+{
+    _stopped = YES;
+    _callbackProxy.active = NO;
+    Connection *connection = _connection;
+    _connection = nil;
+    if (connection != nil) {
+        [connection terminateWithCompletion:completion];
+    }
+    else if (completion != nil) {
+        dispatch_async(dispatch_get_main_queue(), completion);
+    }
 }
 
 - (BOOL) launchApp:(HttpManager*)hMan receiveSessionUrl:(NSString**)sessionUrl {

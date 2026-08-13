@@ -49,6 +49,7 @@
     BOOL _stoppingStream;
     LMStreamState _streamState;
     LMReconnectStateMachine *_reconnectState;
+    StreamConfiguration *_reconnectConfig;
     NSTimer *_reconnectTimer;
     CGSize _keyboardSize;
     
@@ -67,20 +68,34 @@
 }
 
 - (BOOL)usesReconnectProfile {
+    if (_reconnectState != nil) {
+        return YES;
+    }
     return self.streamConfig.profile != nil &&
         self.streamConfig.profile.mode == LMStreamModeSecondMonitor &&
         self.streamConfig.profile.reconnectEnabled;
 }
 
-- (void)stopCurrentStream {
+- (void)stopCurrentStreamWithCompletion:(void (^)(void))completion {
     [_streamView cancelAllTouches];
-    [_streamMan stopStream];
+    StreamManager *streamManager = _streamMan;
+    _streamMan = nil;
+    if (streamManager != nil) {
+        [streamManager stopStreamWithCompletion:completion];
+    }
+    else if (completion != nil) {
+        dispatch_async(dispatch_get_main_queue(), completion);
+    }
+}
+
+- (void)stopCurrentStream {
+    [self stopCurrentStreamWithCompletion:nil];
 }
 
 - (void)showReconnectFailure:(NSString *)message {
+    [self stopStream];
     [_reconnectState fail];
     _streamState = LMStreamStateFailed;
-    [self stopCurrentStream];
 
     dispatch_async(dispatch_get_main_queue(), ^{
         [UIApplication sharedApplication].idleTimerDisabled = NO;
@@ -105,7 +120,7 @@
     [_stageLabel setText:@"Reconnecting..."];
     [_stageLabel sizeToFit];
     [_spinner startAnimating];
-    _streamMan = [[StreamManager alloc] initWithConfig:self.streamConfig
+    _streamMan = [[StreamManager alloc] initWithConfig:_reconnectConfig
                                              renderView:_streamView
                                     connectionCallbacks:self];
     NSOperationQueue *opQueue = [[NSOperationQueue alloc] init];
@@ -126,11 +141,18 @@
     _stageLabel.hidden = NO;
     [_spinner startAnimating];
     [_reconnectTimer invalidate];
-    _reconnectTimer = [NSTimer scheduledTimerWithTimeInterval:_reconnectState.retryDelay
-                                                        target:self
-                                                      selector:@selector(retryStream:)
-                                                      userInfo:nil
-                                                       repeats:NO];
+    [self stopCurrentStreamWithCompletion:^{
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (self->_stoppingStream || self->_reconnectState.state != LMStreamStateReconnecting) {
+                return;
+            }
+            self->_reconnectTimer = [NSTimer scheduledTimerWithTimeInterval:self->_reconnectState.retryDelay
+                                                                        target:self
+                                                                      selector:@selector(retryStream:)
+                                                                      userInfo:nil
+                                                                       repeats:NO];
+        });
+    }];
 }
 
 - (void)viewDidAppear:(BOOL)animated
@@ -169,6 +191,7 @@
     if ([self usesReconnectProfile]) {
         _reconnectState = [[LMReconnectStateMachine alloc] initWithHost:self.streamConfig.host
                                                                   profile:self.streamConfig.profile];
+        _reconnectConfig = [self.streamConfig copy];
     }
     
     _stageLabel = [[UILabel alloc] init];

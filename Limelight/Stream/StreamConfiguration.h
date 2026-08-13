@@ -68,9 +68,20 @@ FOUNDATION_EXPORT NSTimeInterval const LMReconnectMaximumDelay;
 
 + (instancetype)defaultSecondMonitorProfile;
 + (LMDeviceCapabilityProfile)currentDeviceCapabilityProfile;
++ (LMDeviceCapabilityProfile)capabilityProfileForMachineIdentifier:(NSString *)machineIdentifier;
++ (NSArray<NSValue *> *)supportedResolutionsForCapabilityProfile:(LMDeviceCapabilityProfile)capabilityProfile
+                                           experimental1080pEnabled:(BOOL)experimental1080pEnabled;
 + (instancetype)profileWithDictionary:(NSDictionary *)dictionary;
 - (NSDictionary *)dictionaryRepresentation;
 - (BOOL)validateForCapabilityProfile:(LMDeviceCapabilityProfile)capabilityProfile error:(NSError **)error;
+
+@end
+
+@interface LMStreamProfileStore : NSObject
+
++ (NSString *)defaultsKeyForHost:(NSString *)hostUuid profileName:(NSString *)profileName;
++ (LMStreamProfile *)loadProfileForHost:(NSString *)hostUuid profileName:(NSString *)profileName;
++ (void)saveProfile:(LMStreamProfile *)profile forHost:(NSString *)hostUuid profileName:(NSString *)profileName;
 
 @end
 
@@ -90,7 +101,7 @@ FOUNDATION_EXPORT NSTimeInterval const LMReconnectMaximumDelay;
 
 @end
 
-@interface StreamConfiguration : NSObject
+@interface StreamConfiguration : NSObject <NSCopying>
 
 @property NSString* host;
 @property unsigned short httpsPort;
@@ -116,7 +127,7 @@ FOUNDATION_EXPORT NSTimeInterval const LMReconnectMaximumDelay;
 @property BOOL useFramePacing;
 @property NSData* serverCert;
 @property LMInputMode inputMode;
-@property (nonatomic, retain) LMStreamProfile *profile;
+@property (nonatomic, copy) LMStreamProfile *profile;
 
 - (BOOL)applyProfile:(LMStreamProfile *)profile error:(NSError **)error;
 - (BOOL)applyProfile:(LMStreamProfile *)profile

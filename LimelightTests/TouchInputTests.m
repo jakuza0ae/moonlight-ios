@@ -3,6 +3,7 @@
 #import "AbsoluteTouchHandler.h"
 #import "RelativeTouchHandler.h"
 #import "StreamConfiguration.h"
+#import "Connection.h"
 
 @interface TouchInputTests : XCTestCase
 @end
@@ -246,6 +247,113 @@
     error = nil;
     XCTAssertTrue([profile validateForCapabilityProfile:LMDeviceCapabilityProfileIPadAir error:&error]);
     XCTAssertNil(error);
+}
+
+- (void)testSecondMonitorProfilePropagatesAllStreamValues {
+    LMStreamProfile *profile = [LMStreamProfile defaultSecondMonitorProfile];
+    StreamConfiguration *configuration = [[StreamConfiguration alloc] init];
+    NSError *error = nil;
+
+    XCTAssertTrue([configuration applyProfile:profile
+                         forCapabilityProfile:LMDeviceCapabilityProfileIPadAir
+                                         error:&error]);
+    XCTAssertNil(error);
+    XCTAssertEqual(configuration.width, 1280);
+    XCTAssertEqual(configuration.height, 720);
+    XCTAssertEqual(configuration.frameRate, 30);
+    XCTAssertEqual(configuration.bitRate, 5000);
+    XCTAssertEqual(configuration.supportedVideoFormats, VIDEO_FORMAT_H264);
+    XCTAssertEqual(configuration.inputMode, LMInputModeNativeTouch);
+    XCTAssertEqual(configuration.gamepadMask, 0);
+    XCTAssertFalse(configuration.playAudioOnPC);
+}
+
+- (void)testStoredProfileDictionaryRoundTripsWithoutChangingMode {
+    LMStreamProfile *profile = [LMStreamProfile defaultSecondMonitorProfile];
+    profile.bitrate = 7000;
+    profile.experimental1080pEnabled = YES;
+    profile.resolution = CGSizeMake(1920, 1080);
+
+    LMStreamProfile *roundTripped = [LMStreamProfile profileWithDictionary:profile.dictionaryRepresentation];
+
+    XCTAssertEqualObjects(roundTripped, profile);
+    XCTAssertEqual(roundTripped.mode, LMStreamModeSecondMonitor);
+    XCTAssertEqual(roundTripped.bitrate, 7000);
+}
+
+- (void)testProfileStoreRoundTripsByHostAndProfileName {
+    LMStreamProfile *profile = [LMStreamProfile defaultSecondMonitorProfile];
+    profile.bitrate = 9000;
+
+    [LMStreamProfileStore saveProfile:profile forHost:@"task-6-host" profileName:@"second-monitor"];
+    LMStreamProfile *loaded = [LMStreamProfileStore loadProfileForHost:@"task-6-host" profileName:@"second-monitor"];
+    LMStreamProfile *otherHost = [LMStreamProfileStore loadProfileForHost:@"other-host" profileName:@"second-monitor"];
+
+    XCTAssertEqualObjects(loaded, profile);
+    XCTAssertNil(otherHost);
+    [[NSUserDefaults standardUserDefaults] removeObjectForKey:[LMStreamProfileStore defaultsKeyForHost:@"task-6-host" profileName:@"second-monitor"]];
+}
+
+- (void)testMissingSecondMonitorProfilePreservesGameModeSelection {
+    XCTAssertNil([LMStreamProfileStore loadProfileForHost:@"host-without-profile" profileName:@"second-monitor"]);
+}
+
+- (void)testDisabledAudioDoesNotInitializeRemoteAudioRenderer {
+    StreamConfiguration *configuration = [[StreamConfiguration alloc] init];
+    XCTAssertTrue([configuration applyProfile:[LMStreamProfile defaultSecondMonitorProfile]
+                         forCapabilityProfile:LMDeviceCapabilityProfileIPadAir
+                                         error:nil]);
+
+    XCTAssertFalse(LMShouldInitializeAudioRenderer(configuration));
+}
+
+- (void)testGameConfigurationStillInitializesAudioRenderer {
+    StreamConfiguration *configuration = [[StreamConfiguration alloc] init];
+
+    XCTAssertNil(configuration.profile);
+    XCTAssertTrue(LMShouldInitializeAudioRenderer(configuration));
+}
+
+- (void)testDecoderFailureUsesTheConnectionTerminationBoundary {
+    VideoDecoderRenderer *renderer = [[VideoDecoderRenderer alloc] init];
+    __block int receivedError = 0;
+    renderer.decoderFailureHandler = ^(int errorCode) {
+        receivedError = errorCode;
+    };
+
+    [renderer reportDecoderFailure:ML_ERROR_FRAME_CONVERSION];
+
+    XCTAssertEqual(receivedError, ML_ERROR_FRAME_CONVERSION);
+}
+
+- (void)testIPadAirCapabilityRecognizesEveryFirstGenerationModelIdentifier {
+    XCTAssertEqual([LMStreamProfile capabilityProfileForMachineIdentifier:@"iPad4,1"], LMDeviceCapabilityProfileIPadAir);
+    XCTAssertEqual([LMStreamProfile capabilityProfileForMachineIdentifier:@"iPad4,2"], LMDeviceCapabilityProfileIPadAir);
+    XCTAssertEqual([LMStreamProfile capabilityProfileForMachineIdentifier:@"iPad4,3"], LMDeviceCapabilityProfileIPadAir);
+    XCTAssertEqual([LMStreamProfile capabilityProfileForMachineIdentifier:@"iPad4,4"], LMDeviceCapabilityProfileGeneric);
+}
+
+- (void)testIPadAirProfileExposesOnly720pAndOptIn1080p30 {
+    NSArray<NSValue *> *defaultResolutions = [LMStreamProfile supportedResolutionsForCapabilityProfile:LMDeviceCapabilityProfileIPadAir experimental1080pEnabled:NO];
+    NSArray<NSValue *> *experimentalResolutions = [LMStreamProfile supportedResolutionsForCapabilityProfile:LMDeviceCapabilityProfileIPadAir experimental1080pEnabled:YES];
+
+    XCTAssertEqual(defaultResolutions.count, 1U);
+    XCTAssertEqual(experimentalResolutions.count, 2U);
+    XCTAssertTrue(CGSizeEqualToSize(defaultResolutions[0].CGSizeValue, CGSizeMake(1280, 720)));
+    XCTAssertTrue(CGSizeEqualToSize(experimentalResolutions[1].CGSizeValue, CGSizeMake(1920, 1080)));
+}
+
+- (void)testReconnectUsesAStableConfigurationSnapshot {
+    StreamConfiguration *configuration = [[StreamConfiguration alloc] init];
+    configuration.host = @"original-host";
+    configuration.profile = [LMStreamProfile defaultSecondMonitorProfile];
+    StreamConfiguration *snapshot = [configuration copy];
+
+    configuration.host = @"changed-host";
+    configuration.profile.bitrate = 12000;
+
+    XCTAssertEqualObjects(snapshot.host, @"original-host");
+    XCTAssertEqual(snapshot.profile.bitrate, 5000);
 }
 
 - (void)testReconnectStateRetainsHostAndProfileWithBoundedBackoff {

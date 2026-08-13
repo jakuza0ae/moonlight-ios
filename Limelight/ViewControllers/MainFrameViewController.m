@@ -601,7 +601,16 @@ static NSMutableSet* hostList;
     [[self activeViewController] presentViewController:alertController animated:YES completion:nil];
 }
 
-- (void) prepareToStreamApp:(TemporaryApp *)app {
+- (void) presentStreamPreparationError:(NSError *)error {
+    NSString *message = error.localizedDescription ?: @"Moonlight could not prepare the stream.";
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Stream Profile Error"
+                                                                       message:message
+                                                                preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+    [[self activeViewController] presentViewController:alert animated:YES completion:nil];
+}
+
+- (BOOL) prepareToStreamApp:(TemporaryApp *)app {
     _streamConfig = [[StreamConfiguration alloc] init];
     _streamConfig.host = app.host.activeAddress;
     _streamConfig.httpsPort = app.host.httpsPort;
@@ -610,6 +619,22 @@ static NSMutableSet* hostList;
     _streamConfig.serverCert = app.host.serverCert;
     
     DataManager* dataMan = [[DataManager alloc] init];
+    if (!dataMan.isAvailable) {
+        [self presentStreamPreparationError:dataMan.storeError];
+        return NO;
+    }
+
+    LMStreamProfile *secondMonitorProfile = [dataMan getSecondMonitorProfileForHost:app.host.uuid];
+    if (secondMonitorProfile != nil) {
+        NSError *profileError = nil;
+        if (![_streamConfig applyProfile:secondMonitorProfile error:&profileError]) {
+            [self presentStreamPreparationError:profileError];
+            return NO;
+        }
+        _streamConfig.serverCodecModeSupport = app.host.serverCodecModeSupport;
+        return YES;
+    }
+
     TemporarySettings* streamSettings = [dataMan getSettings];
     _streamConfig.inputMode = streamSettings.inputMode;
     
@@ -701,6 +726,7 @@ static NSMutableSet* hostList;
         _streamConfig.supportedVideoFormats |= VIDEO_FORMAT_AV1_MAIN10;
     }
 #endif
+    return YES;
 }
 
 - (void)appLongClicked:(TemporaryApp *)app view:(UIView *)view {
@@ -742,11 +768,15 @@ static NSMutableSet* hostList;
                                 actionWithTitle:currentApp == nil ? @"Launch App" : ([app.id isEqualToString:currentApp.id] ? @"Resume App" : @"Resume Running App") style:UIAlertActionStyleDefault handler:^(UIAlertAction* action){
         if (currentApp != nil) {
             Log(LOG_I, @"Resuming application: %@", currentApp.name);
-            [self prepareToStreamApp:currentApp];
+            if (![self prepareToStreamApp:currentApp]) {
+                return;
+            }
         }
         else {
             Log(LOG_I, @"Launching application: %@", app.name);
-            [self prepareToStreamApp:app];
+            if (![self prepareToStreamApp:app]) {
+                return;
+            }
         }
 
         [self performSegueWithIdentifier:@"createStreamFrame" sender:nil];
@@ -800,11 +830,15 @@ static NSMutableSet* hostList;
                                                     app.host.currentGame = @"0";
                                                     dispatch_async(dispatch_get_main_queue(), ^{
                                                         // If it succeeds and we're to start streaming, segue to the stream
-                                                        if (![app.id isEqualToString:currentApp.id]) {
-                                                            [self prepareToStreamApp:app];
-                                                            [self hideLoadingFrame: ^{
-                                                                [self performSegueWithIdentifier:@"createStreamFrame" sender:nil];
-                                                            }];
+                                                         if (![app.id isEqualToString:currentApp.id]) {
+                                                             if ([self prepareToStreamApp:app]) {
+                                                                 [self hideLoadingFrame: ^{
+                                                                     [self performSegueWithIdentifier:@"createStreamFrame" sender:nil];
+                                                                 }];
+                                                             }
+                                                             else {
+                                                                 [self hideLoadingFrame:nil];
+                                                             }
                                                         }
                                                         else {
                                                             // Otherwise, just hide the loading icon
@@ -857,8 +891,9 @@ static NSMutableSet* hostList;
         // If there's a running app, display a menu
         [self appLongClicked:app view:view];
     } else {
-        [self prepareToStreamApp:app];
-        [self performSegueWithIdentifier:@"createStreamFrame" sender:nil];
+        if ([self prepareToStreamApp:app]) {
+            [self performSegueWithIdentifier:@"createStreamFrame" sender:nil];
+        }
     }
 }
 
@@ -1158,6 +1193,10 @@ static NSMutableSet* hostList;
 
 - (void) retrieveSavedHosts {
     DataManager* dataMan = [[DataManager alloc] init];
+    if (!dataMan.isAvailable) {
+        [self presentStreamPreparationError:dataMan.storeError];
+        return;
+    }
     NSArray* hosts = [dataMan getHosts];
     @synchronized(hostList) {
         [hostList addObjectsFromArray:hosts];
