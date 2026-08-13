@@ -28,6 +28,18 @@ BOOL LMSecondMonitorProfileSupportsExplicit1080p30(BOOL optIn, CGSize resolution
     return optIn && CGSizeEqualToSize(resolution, CGSizeMake(1920, 1080)) && fps == 30;
 }
 
+BOOL LMShouldMarkSecondMonitorLaunch(StreamConfiguration *configuration) {
+    return configuration.profile != nil && configuration.profile.mode == LMStreamModeSecondMonitor;
+}
+
+BOOL LMShouldSendCompatibilityLongPress(LMInputMode inputMode, BOOL nativeTouchAvailable) {
+    return inputMode == LMInputModeMouseCompatibility || !nativeTouchAvailable;
+}
+
+BOOL LMShouldRetryStreamFailure(BOOL reconnectEnabled, BOOL stopping) {
+    return reconnectEnabled && !stopping;
+}
+
 @implementation LMStreamProfile
 
 + (instancetype)defaultSecondMonitorProfile {

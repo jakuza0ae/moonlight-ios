@@ -130,6 +130,32 @@
     XCTAssertEqual(LMInputRouteForMode(LMInputModeNativeTouch, 2, NO), LMInputRouteMouseCompatibility);
 }
 
+- (void)testSecondMonitorLaunchMarkerIsOnlySentForMarkedProfiles {
+    StreamConfiguration *secondMonitor = [[StreamConfiguration alloc] init];
+    secondMonitor.profile = [LMStreamProfile defaultSecondMonitorProfile];
+
+    StreamConfiguration *game = [[StreamConfiguration alloc] init];
+
+    XCTAssertTrue(LMShouldMarkSecondMonitorLaunch(secondMonitor));
+    XCTAssertFalse(LMShouldMarkSecondMonitorLaunch(game));
+}
+
+- (void)testNativeLongPressDoesNotUseCompatibilityMouseSemantics {
+    XCTAssertFalse(LMShouldSendCompatibilityLongPress(LMInputModeNativeTouch, YES));
+    XCTAssertTrue(LMShouldSendCompatibilityLongPress(LMInputModeMouseCompatibility, YES));
+    XCTAssertTrue(LMShouldSendCompatibilityLongPress(LMInputModeHybrid, NO));
+}
+
+- (void)testInitialReconnectCanStartFromConnectingState {
+    LMStreamProfile *profile = [LMStreamProfile defaultSecondMonitorProfile];
+    LMReconnectStateMachine *state = [[LMReconnectStateMachine alloc] initWithHost:@"host-uuid"
+                                                                               profile:profile];
+
+    XCTAssertTrue(LMShouldRetryStreamFailure(YES, NO));
+    XCTAssertTrue([state beginReconnect]);
+    XCTAssertEqual(state.state, LMStreamStateReconnecting);
+}
+
 - (void)testLongPressOnlyStartsWithExactlyOneActiveTouch {
     XCTAssertTrue(LMShouldStartLongPressForTouchCount(1));
     XCTAssertFalse(LMShouldStartLongPressForTouchCount(2));

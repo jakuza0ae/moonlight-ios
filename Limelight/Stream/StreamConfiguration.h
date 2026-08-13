@@ -49,6 +49,7 @@ typedef NS_ENUM(NSInteger, LMProfileValidationErrorCode) {
 };
 
 @class LMStreamProfile;
+@class StreamConfiguration;
 
 FOUNDATION_EXPORT NSString * const LMProfileValidationDomain;
 FOUNDATION_EXPORT NSString * const LMProfileValidationFieldKey;
@@ -59,8 +60,13 @@ FOUNDATION_EXPORT BOOL LMSecondMonitorProfileSelectionIsValid(BOOL active,
                                                              NSString * _Nullable hostUUID,
                                                              LMStreamProfile * _Nullable profile);
 FOUNDATION_EXPORT BOOL LMSecondMonitorProfileSupportsExplicit1080p30(BOOL optIn,
-                                                                     CGSize resolution,
-                                                                     NSInteger fps);
+                                                                      CGSize resolution,
+                                                                      NSInteger fps);
+FOUNDATION_EXPORT BOOL LMShouldMarkSecondMonitorLaunch(StreamConfiguration *configuration);
+FOUNDATION_EXPORT BOOL LMShouldSendCompatibilityLongPress(LMInputMode inputMode,
+                                                           BOOL nativeTouchAvailable);
+FOUNDATION_EXPORT BOOL LMShouldRetryStreamFailure(BOOL reconnectEnabled,
+                                                  BOOL stopping);
 
 @interface LMStreamProfile : NSObject <NSCopying>
 

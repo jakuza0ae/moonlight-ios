@@ -28,6 +28,7 @@ The shared diagnostic record uses these fields and JSON spellings:
 - `rtt_ms`, `dropped_frames`, and `reconnect_count` are nullable on Sunshine because this host status path has no host-side telemetry source for those values. Sunshine must return JSON `null`, not zero, when unavailable.
 - Moonlight's local record contains client-side RTT, dropped-frame, and reconnect values. Its host display, mapped output, capture backend, and encoder fields remain null unless an authenticated host status source is added; the overlay renders null as `unavailable`.
 - Sunshine and Moonlight bound diagnostic text fields to 128 characters and the formatted Moonlight overlay to 2048 characters. Dangerous or command-like text is rendered as `redacted`.
+- Sunshine may additionally expose `selected_device_id`, `friendly_name`, `active`, `virtual_device`, `current_resolution`, `devices`, and `last_reinitialization_reason` as selector/lifecycle metadata; these extensions use the same nullability and redaction rules and do not contain secrets.
 - Sunshine preserves the existing lifecycle state names, and Moonlight preserves its existing stream state names. The union above is the compatibility contract; a consumer must not infer a host state from a client state.
 
 ## Target Profile

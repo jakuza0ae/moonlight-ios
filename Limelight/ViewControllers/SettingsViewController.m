@@ -719,10 +719,12 @@ BOOL isCustomResolution(CGSize res) {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     NSArray *hosts = [dataMan getHosts];
     BOOL active = [defaults boolForKey:@"Moonlight.SecondMonitor.Active"];
+    NSString *selectedHostUUID = [defaults stringForKey:@"Moonlight.SecondMonitor.HostUUID"];
+    LMStreamProfile *selectedProfile = selectedHostUUID.length != 0 ? [dataMan getSecondMonitorProfileForHost:selectedHostUUID] : nil;
     __weak SettingsViewController *weakSelf = self;
     UINavigationController *navigationController = LMCreateSecondMonitorSettingsNavigationController(hosts,
-                                                                                                      nil,
-                                                                                                      [LMStreamProfile defaultSecondMonitorProfile],
+                                                                                                       selectedHostUUID,
+                                                                                                       selectedProfile ?: [LMStreamProfile defaultSecondMonitorProfile],
                                                                                                       active,
                                                                                                       ^(NSString *selectedHostUUID, LMStreamProfile *updatedProfile, BOOL selectedActive, BOOL diagnostics) {
         SettingsViewController *strongSelf = weakSelf;

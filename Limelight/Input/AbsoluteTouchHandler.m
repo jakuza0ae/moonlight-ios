@@ -280,6 +280,11 @@ void LMCompatibilityGestureStateReset(LMCompatibilityGestureState *state) {
         return;
     }
 
+    if (!LMShouldSendCompatibilityLongPress(inputMode, !nativeTouchUnavailable)) {
+        [self invalidateLongPressTimer];
+        return;
+    }
+
     [self invalidateLongPressTimer];
     [view updateCursorLocation:[lastTouchDown locationInView:view] isMouse:NO];
     if (inputMode == LMInputModeMouseCompatibility || nativeTouchUnavailable) {

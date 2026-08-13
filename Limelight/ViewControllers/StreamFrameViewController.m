@@ -688,7 +688,7 @@
     [self recordDiagnosticError:@"stage_failed"];
     [_streamMan setDiagnosticState:@"failed"];
 
-    if ([self usesReconnectProfile] && _reconnectState.state == LMStreamStateReconnecting && !_stoppingStream) {
+    if (LMShouldRetryStreamFailure([self usesReconnectProfile], _stoppingStream)) {
         dispatch_async(dispatch_get_main_queue(), ^{
             [self beginReconnect];
         });
@@ -732,7 +732,7 @@
 
     [self cleanupStreamInputOnMainThread];
 
-    if ([self usesReconnectProfile] && _reconnectState.state == LMStreamStateReconnecting && !_stoppingStream) {
+    if (LMShouldRetryStreamFailure([self usesReconnectProfile], _stoppingStream)) {
         dispatch_async(dispatch_get_main_queue(), ^{
             [self beginReconnect];
         });
