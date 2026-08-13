@@ -194,7 +194,6 @@ BOOL LMShouldShowGamepadOverlayForStreamConfiguration(StreamConfiguration *strea
     UIButton *hideButton = [self desktopToolbarButtonWithTitle:@"Hide" action:@selector(hideDesktopToolbar:)];
     UIButton *keyboardButton = [self desktopToolbarButtonWithTitle:@"Keyboard" action:@selector(showDesktopKeyboard:)];
     UIButton *reconnectButton = [self desktopToolbarButtonWithTitle:@"Reconnect" action:@selector(requestDesktopReconnect:)];
-    UIButton *diagnosticsButton = [self desktopToolbarButtonWithTitle:@"Diagnostics" action:@selector(requestDesktopDiagnostics:)];
 
     desktopInputModeSelector = [[UISegmentedControl alloc] initWithItems:@[@"Touch", @"Mouse", @"Hybrid"]];
     desktopInputModeSelector.translatesAutoresizingMaskIntoConstraints = NO;
@@ -204,9 +203,15 @@ BOOL LMShouldShowGamepadOverlayForStreamConfiguration(StreamConfiguration *strea
     [desktopInputModeSelector.widthAnchor constraintGreaterThanOrEqualToConstant:190.0].active = YES;
     [desktopInputModeSelector.heightAnchor constraintGreaterThanOrEqualToConstant:44.0].active = YES;
 
-    UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[
-        hideButton, desktopInputModeSelector, keyboardButton, reconnectButton, diagnosticsButton
-    ]];
+    NSMutableArray<UIView *> *toolbarControls = [NSMutableArray arrayWithObjects:hideButton,
+                                                  desktopInputModeSelector,
+                                                  keyboardButton,
+                                                  reconnectButton,
+                                                  nil];
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"Moonlight.SecondMonitor.Diagnostics"]) {
+        [toolbarControls addObject:[self desktopToolbarButtonWithTitle:@"Diagnostics" action:@selector(requestDesktopDiagnostics:)]];
+    }
+    UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:toolbarControls];
     stack.translatesAutoresizingMaskIntoConstraints = NO;
     stack.axis = UILayoutConstraintAxisHorizontal;
     stack.alignment = UIStackViewAlignmentCenter;
@@ -352,6 +357,8 @@ BOOL LMShouldShowGamepadOverlayForStreamConfiguration(StreamConfiguration *strea
 }
 
 - (void)showDesktopKeyboard:(UIButton *)sender {
+    [self releaseKeyboardActions];
+    [keyInputField resignFirstResponder];
     keyInputField.delegate = self;
     keyInputField.text = @"0";
     __weak StreamView *weakSelf = self;

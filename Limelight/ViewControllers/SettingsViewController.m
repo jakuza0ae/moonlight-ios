@@ -14,10 +14,9 @@
 #import <VideoToolbox/VideoToolbox.h>
 #import <AVFoundation/AVFoundation.h>
 
-typedef void (^LMSecondMonitorSettingsCompletion)(LMStreamProfile *profile, BOOL active, BOOL diagnostics);
-
 @interface LMSecondMonitorSettingsViewController : UIViewController
-@property (nonatomic, copy) NSString *hostUUID;
+@property (nonatomic, copy) NSString *selectedHostUUID;
+@property (nonatomic, copy) NSArray *hosts;
 @property (nonatomic, copy) LMStreamProfile *profile;
 @property (nonatomic) BOOL active;
 @property (nonatomic, copy) LMSecondMonitorSettingsCompletion completion;
@@ -26,8 +25,10 @@ typedef void (^LMSecondMonitorSettingsCompletion)(LMStreamProfile *profile, BOOL
 @implementation LMSecondMonitorSettingsViewController {
     UIScrollView *_settingsScrollView;
     UIStackView *_settingsStack;
+    UIButton *_hostButton;
     UISegmentedControl *_modeSelector;
     UISegmentedControl *_resolutionSelector;
+    UISwitch *_experimental1080Switch;
     UISegmentedControl *_fpsSelector;
     UISlider *_bitrateSlider;
     UILabel *_bitrateLabel;
@@ -68,6 +69,69 @@ typedef void (^LMSecondMonitorSettingsCompletion)(LMStreamProfile *profile, BOOL
     [_settingsStack addArrangedSubview:control];
 }
 
+- (id)hostWithUUID:(NSString *)hostUUID {
+    for (id host in self.hosts) {
+        if ([[host valueForKey:@"uuid"] isEqualToString:hostUUID]) {
+            return host;
+        }
+    }
+    return nil;
+}
+
+- (void)updateHostButtonTitle {
+    id host = [self hostWithUUID:self.selectedHostUUID];
+    NSString *title = host == nil ? @"Choose host" : [NSString stringWithFormat:@"Host: %@", [host valueForKey:@"name"]];
+    [_hostButton setTitle:title forState:UIControlStateNormal];
+}
+
+- (void)loadProfileForSelectedHost {
+    if (self.selectedHostUUID.length == 0) {
+        self.profile = [LMStreamProfile defaultSecondMonitorProfile];
+    }
+    else {
+        self.profile = [LMStreamProfileStore loadProfileForHost:self.selectedHostUUID profileName:@"second-monitor"] ?: [LMStreamProfile defaultSecondMonitorProfile];
+    }
+
+    _modeSelector.selectedSegmentIndex = self.active ? 1 : 0;
+    _fpsSelector.selectedSegmentIndex = [self selectedIndexForFrameRate:self.profile.fps];
+    _audioSelector.selectedSegmentIndex = MIN(self.profile.audioPolicy, 2);
+    _inputModeSelector.selectedSegmentIndex = self.profile.inputMode;
+    _gestureSelector.selectedSegmentIndex = self.profile.inputMode == LMInputModeHybrid ? 1 : 0;
+    _reconnectSwitch.on = self.profile.reconnectEnabled;
+    _bitrateSlider.value = MAX(_bitrateSlider.minimumValue, MIN(_bitrateSlider.maximumValue, self.profile.bitrate));
+    [self updateBitrateLabel];
+    if (_experimental1080Switch != nil) {
+        _experimental1080Switch.on = self.profile.experimental1080pEnabled;
+    }
+    [self rebuildResolutionSelector];
+}
+
+- (void)rebuildResolutionSelector {
+    BOOL experimental1080pEnabled = _experimental1080Switch == nil || _experimental1080Switch.isOn;
+    _supportedResolutions = [LMStreamProfile supportedResolutionsForCapabilityProfile:_capabilityProfile
+                                                               experimental1080pEnabled:experimental1080pEnabled];
+
+    NSMutableArray<NSString *> *resolutionTitles = [NSMutableArray array];
+    for (NSValue *value in _supportedResolutions) {
+        CGSize resolution = value.CGSizeValue;
+        [resolutionTitles addObject:[NSString stringWithFormat:@"%ld x %ld", (long)resolution.width, (long)resolution.height]];
+    }
+
+    UISegmentedControl *oldSelector = _resolutionSelector;
+    NSInteger oldIndex = oldSelector == nil ? NSNotFound : [_settingsStack.arrangedSubviews indexOfObject:oldSelector];
+    _resolutionSelector = [[UISegmentedControl alloc] initWithItems:resolutionTitles];
+    NSInteger selectedIndex = [self selectedIndexForResolution:self.profile.resolution];
+    _resolutionSelector.selectedSegmentIndex = selectedIndex;
+    if (oldSelector != nil && oldIndex != NSNotFound) {
+        [_settingsStack removeArrangedSubview:oldSelector];
+        [oldSelector removeFromSuperview];
+        [_settingsStack insertArrangedSubview:_resolutionSelector atIndex:oldIndex];
+    }
+    else {
+        [self addControl:_resolutionSelector];
+    }
+}
+
 - (NSInteger)selectedIndexForResolution:(CGSize)resolution {
     for (NSUInteger index = 0; index < _supportedResolutions.count; index++) {
         if (CGSizeEqualToSize(resolution, _supportedResolutions[index].CGSizeValue)) {
@@ -99,6 +163,42 @@ typedef void (^LMSecondMonitorSettingsCompletion)(LMStreamProfile *profile, BOOL
     }
 }
 
+- (void)experimental1080Changed:(UISwitch *)sender {
+    [self rebuildResolutionSelector];
+}
+
+- (void)presentHostPicker:(UIButton *)sender {
+    if (self.hosts.count == 0) {
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"No Hosts Available"
+                                                                           message:@"Pair a host before enabling second-monitor mode."
+                                                                    preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:alert animated:YES completion:nil];
+        return;
+    }
+
+    UIAlertController *picker = [UIAlertController alertControllerWithTitle:@"Choose Host"
+                                                                       message:@"Select the host that owns this second-monitor profile."
+                                                                preferredStyle:UIAlertControllerStyleActionSheet];
+    for (id host in self.hosts) {
+        NSString *hostUUID = [host valueForKey:@"uuid"];
+        NSString *hostName = [host valueForKey:@"name"] ?: hostUUID;
+        [picker addAction:[UIAlertAction actionWithTitle:hostName
+                                                   style:UIAlertActionStyleDefault
+                                                 handler:^(UIAlertAction *action) {
+            self.selectedHostUUID = hostUUID;
+            [self loadProfileForSelectedHost];
+            [self updateHostButtonTitle];
+        }]];
+    }
+    [picker addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    if (picker.popoverPresentationController != nil) {
+        picker.popoverPresentationController.sourceView = sender;
+        picker.popoverPresentationController.sourceRect = sender.bounds;
+    }
+    [self presentViewController:picker animated:YES completion:nil];
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"Second Monitor";
@@ -107,9 +207,10 @@ typedef void (^LMSecondMonitorSettingsCompletion)(LMStreamProfile *profile, BOOL
     if (self.profile == nil) {
         self.profile = [LMStreamProfile defaultSecondMonitorProfile];
     }
+    if ([self hostWithUUID:self.selectedHostUUID] == nil) {
+        self.selectedHostUUID = nil;
+    }
     _capabilityProfile = [LMStreamProfile currentDeviceCapabilityProfile];
-    _supportedResolutions = [LMStreamProfile supportedResolutionsForCapabilityProfile:_capabilityProfile
-                                                               experimental1080pEnabled:self.profile.experimental1080pEnabled];
     _supportedFrameRates = _capabilityProfile == LMDeviceCapabilityProfileIPadAir ? @[@30] : @[@30, @60];
 
     self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCancel
@@ -144,20 +245,26 @@ typedef void (^LMSecondMonitorSettingsCompletion)(LMStreamProfile *profile, BOOL
     ]];
 
     [self addSectionTitle:@"Profile"];
-    [self addControl:[self detailLabel:self.hostUUID.length != 0 ? [NSString stringWithFormat:@"Host profile: %@", self.hostUUID] : @"Host profile: default until a host is selected"]];
+    _hostButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    [_hostButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    _hostButton.backgroundColor = [UIColor colorWithWhite:0.12 alpha:1.0];
+    _hostButton.layer.cornerRadius = 8.0;
+    [_hostButton addTarget:self action:@selector(presentHostPicker:) forControlEvents:UIControlEventTouchUpInside];
+    [self addControl:_hostButton];
+    [self updateHostButtonTitle];
     _modeSelector = [[UISegmentedControl alloc] initWithItems:@[@"Game mode", @"Second Monitor"]];
     _modeSelector.selectedSegmentIndex = self.active ? 1 : 0;
     [self addControl:_modeSelector];
 
     [self addSectionTitle:@"Resolution"];
-    NSMutableArray<NSString *> *resolutionTitles = [NSMutableArray array];
-    for (NSValue *value in _supportedResolutions) {
-        CGSize resolution = value.CGSizeValue;
-        [resolutionTitles addObject:[NSString stringWithFormat:@"%ld x %ld", (long)resolution.width, (long)resolution.height]];
+    if (_capabilityProfile == LMDeviceCapabilityProfileIPadAir) {
+        [self addControl:[self detailLabel:@"Experimental 1080p30 requires explicit opt-in."]];
+        _experimental1080Switch = [[UISwitch alloc] init];
+        _experimental1080Switch.on = self.profile.experimental1080pEnabled;
+        [_experimental1080Switch addTarget:self action:@selector(experimental1080Changed:) forControlEvents:UIControlEventValueChanged];
+        [self addControl:_experimental1080Switch];
     }
-    _resolutionSelector = [[UISegmentedControl alloc] initWithItems:resolutionTitles];
-    _resolutionSelector.selectedSegmentIndex = [self selectedIndexForResolution:self.profile.resolution];
-    [self addControl:_resolutionSelector];
+    [self rebuildResolutionSelector];
 
     [self addSectionTitle:@"FPS"];
     NSMutableArray<NSString *> *frameRateTitles = [NSMutableArray array];
@@ -223,12 +330,17 @@ typedef void (^LMSecondMonitorSettingsCompletion)(LMStreamProfile *profile, BOOL
     profile.reconnectEnabled = _reconnectSwitch.isOn;
     profile.codec = LMStreamCodecH264;
     profile.hdrEnabled = NO;
-    profile.experimental1080pEnabled = profile.resolution.width == 1920 && profile.resolution.height == 1080;
+    if (_experimental1080Switch != nil) {
+        profile.experimental1080pEnabled = LMSecondMonitorProfileSupportsExplicit1080p30(_experimental1080Switch.isOn,
+                                                                                          profile.resolution,
+                                                                                          profile.fps);
+    }
     return profile;
 }
 
 - (void)saveSettings:(id)sender {
     LMStreamProfile *profile = [self profileFromControls];
+    BOOL active = _modeSelector.selectedSegmentIndex == 1;
     NSError *error = nil;
     if (![profile validateForCapabilityProfile:_capabilityProfile error:&error]) {
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Invalid Profile"
@@ -239,13 +351,39 @@ typedef void (^LMSecondMonitorSettingsCompletion)(LMStreamProfile *profile, BOOL
         return;
     }
 
+    if (!LMSecondMonitorProfileSelectionIsValid(active, self.selectedHostUUID, profile)) {
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Choose a Host"
+                                                                           message:@"Select a valid host and profile before enabling second-monitor mode."
+                                                                    preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:alert animated:YES completion:nil];
+        return;
+    }
+
     if (self.completion != nil) {
-        self.completion(profile, _modeSelector.selectedSegmentIndex == 1, _diagnosticsSwitch.isOn);
+        self.completion(self.selectedHostUUID, profile, active, _diagnosticsSwitch.isOn);
     }
     [self dismissViewControllerAnimated:YES completion:nil];
 }
 
 @end
+
+UINavigationController *LMCreateSecondMonitorSettingsNavigationController(NSArray *hosts,
+                                                                          NSString *selectedHostUUID,
+                                                                          LMStreamProfile *profile,
+                                                                          BOOL active,
+                                                                          LMSecondMonitorSettingsCompletion completion) {
+    LMSecondMonitorSettingsViewController *panel = [[LMSecondMonitorSettingsViewController alloc] init];
+    panel.hosts = hosts ?: @[];
+    panel.selectedHostUUID = selectedHostUUID;
+    panel.profile = profile ?: [LMStreamProfile defaultSecondMonitorProfile];
+    panel.active = active;
+    panel.completion = completion;
+
+    UINavigationController *navigationController = [[UINavigationController alloc] initWithRootViewController:panel];
+    navigationController.navigationBar.barStyle = UIBarStyleBlack;
+    return navigationController;
+}
 
 @implementation SettingsViewController {
     NSInteger _bitrate;
@@ -362,6 +500,15 @@ BOOL isCustomResolution(CGSize res) {
     return YES;
 }
 
+- (void)hideHDRSetting {
+    self.hdrSelector.hidden = YES;
+    for (UIView *view in self.scrollView.subviews) {
+        if ([view isKindOfClass:[UILabel class]] && [((UILabel *)view).text containsString:@"HDR"]) {
+            view.hidden = YES;
+        }
+    }
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
 
@@ -398,9 +545,7 @@ BOOL isCustomResolution(CGSize res) {
         [self.framerateSelector insertSegmentWithTitle:@"30 FPS" atIndex:0 animated:NO];
         [self.framerateSelector setSelectedSegmentIndex:0];
         [self.hdrSelector removeAllSegments];
-        [self.hdrSelector insertSegmentWithTitle:@"Unsupported on this device" atIndex:0 animated:NO];
-        [self.hdrSelector setSelectedSegmentIndex:0];
-        [self.hdrSelector setEnabled:NO];
+        [self hideHDRSetting];
     }
     
     // Ensure we pick a bitrate that falls exactly onto a slider notch.
@@ -520,8 +665,7 @@ BOOL isCustomResolution(CGSize res) {
     
     if (!_secondMonitorProfileMode && (!VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC) || !(AVPlayer.availableHDRModes & AVPlayerHDRModeHDR10))) {
         [self.hdrSelector removeAllSegments];
-        [self.hdrSelector insertSegmentWithTitle:@"Unsupported on this device" atIndex:0 animated:NO];
-        [self.hdrSelector setEnabled:NO];
+        [self hideHDRSetting];
     }
     else if (!_secondMonitorProfileMode) {
         [self.hdrSelector setSelectedSegmentIndex:currentSettings.enableHdr ? 1 : 0];
@@ -573,35 +717,31 @@ BOOL isCustomResolution(CGSize res) {
 - (void)showSecondMonitorSettings:(id)sender {
     DataManager *dataMan = [[DataManager alloc] init];
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSString *hostUUID = [defaults stringForKey:@"Moonlight.SecondMonitor.HostUUID"];
-    if (hostUUID.length == 0) {
-        TemporaryHost *firstHost = [dataMan.getHosts firstObject];
-        hostUUID = firstHost.uuid;
-        if (hostUUID.length != 0) {
-            [defaults setObject:hostUUID forKey:@"Moonlight.SecondMonitor.HostUUID"];
-        }
-    }
-
-    LMStreamProfile *profile = hostUUID.length != 0 ? [dataMan getSecondMonitorProfileForHost:hostUUID] : nil;
-    LMSecondMonitorSettingsViewController *panel = [[LMSecondMonitorSettingsViewController alloc] init];
-    panel.hostUUID = hostUUID;
-    panel.profile = profile ?: [LMStreamProfile defaultSecondMonitorProfile];
-    panel.active = [defaults boolForKey:@"Moonlight.SecondMonitor.Active"];
-    panel.modalPresentationStyle = UIModalPresentationFormSheet;
+    NSArray *hosts = [dataMan getHosts];
+    BOOL active = [defaults boolForKey:@"Moonlight.SecondMonitor.Active"];
     __weak SettingsViewController *weakSelf = self;
-    panel.completion = ^(LMStreamProfile *updatedProfile, BOOL active, BOOL diagnostics) {
+    UINavigationController *navigationController = LMCreateSecondMonitorSettingsNavigationController(hosts,
+                                                                                                      nil,
+                                                                                                      [LMStreamProfile defaultSecondMonitorProfile],
+                                                                                                      active,
+                                                                                                      ^(NSString *selectedHostUUID, LMStreamProfile *updatedProfile, BOOL selectedActive, BOOL diagnostics) {
         SettingsViewController *strongSelf = weakSelf;
         if (strongSelf == nil) {
             return;
         }
 
-        if (updatedProfile != nil && hostUUID.length != 0) {
-            [dataMan saveSecondMonitorProfile:updatedProfile forHost:hostUUID];
+        if (selectedActive && !LMSecondMonitorProfileSelectionIsValid(YES, selectedHostUUID, updatedProfile)) {
+            return;
         }
-        [defaults setBool:active forKey:@"Moonlight.SecondMonitor.Active"];
+        if (updatedProfile != nil && selectedHostUUID.length != 0) {
+            [dataMan saveSecondMonitorProfile:updatedProfile forHost:selectedHostUUID];
+            [defaults setObject:selectedHostUUID forKey:@"Moonlight.SecondMonitor.HostUUID"];
+        }
+        [defaults setBool:selectedActive forKey:@"Moonlight.SecondMonitor.Active"];
         [defaults setBool:diagnostics forKey:@"Moonlight.SecondMonitor.Diagnostics"];
-    };
-    [self presentViewController:panel animated:YES completion:nil];
+    });
+    navigationController.modalPresentationStyle = UIModalPresentationFormSheet;
+    [self presentViewController:navigationController animated:YES completion:nil];
 }
 
 - (void) touchModeChanged {

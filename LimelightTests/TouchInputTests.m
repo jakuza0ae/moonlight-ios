@@ -7,6 +7,31 @@
 #import "StreamFrameViewController.h"
 #import "KeyboardInputField.h"
 #import "StreamView.h"
+#import "SettingsViewController.h"
+
+@interface LMTrackingStreamView : StreamView
+@property (nonatomic) BOOL cancelledOnMainThread;
+@property (nonatomic) BOOL keyboardReleasedOnMainThread;
+@property (nonatomic, copy) void (^cleanupCompleted)(void);
+@end
+
+@implementation LMTrackingStreamView
+
+- (void)cancelAllTouches {
+    self.cancelledOnMainThread = [NSThread isMainThread];
+    if (self.cancelledOnMainThread && self.keyboardReleasedOnMainThread && self.cleanupCompleted != nil) {
+        self.cleanupCompleted();
+    }
+}
+
+- (void)releaseKeyboardActions {
+    self.keyboardReleasedOnMainThread = [NSThread isMainThread];
+    if (self.cancelledOnMainThread && self.keyboardReleasedOnMainThread && self.cleanupCompleted != nil) {
+        self.cleanupCompleted();
+    }
+}
+
+@end
 
 @interface TouchInputTests : XCTestCase
 @end
@@ -433,6 +458,21 @@
     XCTAssertEqual(field.activeKeyboardActions.count, 0U);
 }
 
+- (void)testKeyboardReleaseSendsACompleteModifierCallbackPair {
+    KeyboardInputField *field = [[KeyboardInputField alloc] initWithFrame:CGRectZero];
+    NSMutableArray<NSArray<NSNumber *> *> *callbacks = [NSMutableArray array];
+    field.keyboardActionHandler = ^(LMKeyboardAction action, BOOL pressed) {
+        [callbacks addObject:@[@(action), @(pressed)]];
+    };
+
+    [field sendKeyboardAction:LMKeyboardActionShift pressed:YES];
+    [field releaseAllKeyboardActions];
+
+    XCTAssertEqual(callbacks.count, 2U);
+    XCTAssertEqualObjects(callbacks[0], @[@(LMKeyboardActionShift), @YES]);
+    XCTAssertEqualObjects(callbacks[1], @[@(LMKeyboardActionShift), @NO]);
+}
+
 - (void)testSecondMonitorToolbarAndOverlayPredicatesDoNotApplyToGameMode {
     LMStreamProfile *profile = [LMStreamProfile defaultSecondMonitorProfile];
     StreamConfiguration *desktopConfiguration = [[StreamConfiguration alloc] init];
@@ -451,6 +491,72 @@
 
     XCTAssertFalse(LMShouldUseSecondMonitorProfile(NO, profile));
     XCTAssertTrue(LMShouldUseSecondMonitorProfile(YES, profile));
+}
+
+- (void)testSecondMonitorActivationRequiresAnExplicitHostAndProfile {
+    LMStreamProfile *profile = [LMStreamProfile defaultSecondMonitorProfile];
+
+    XCTAssertFalse(LMSecondMonitorProfileSelectionIsValid(YES, nil, profile));
+    XCTAssertFalse(LMSecondMonitorProfileSelectionIsValid(YES, @"", profile));
+    XCTAssertTrue(LMSecondMonitorProfileSelectionIsValid(YES, @"selected-host", profile));
+}
+
+- (void)testSecondMonitor1080p30RequiresTheExplicitOptIn {
+    XCTAssertFalse(LMSecondMonitorProfileSupportsExplicit1080p30(NO, CGSizeMake(1920, 1080), 30));
+    XCTAssertFalse(LMSecondMonitorProfileSupportsExplicit1080p30(YES, CGSizeMake(1920, 1080), 60));
+    XCTAssertTrue(LMSecondMonitorProfileSupportsExplicit1080p30(YES, CGSizeMake(1920, 1080), 30));
+}
+
+- (void)testSecondMonitorSettingsFactoryReturnsVisibleNavigationContainer {
+    UINavigationController *navigationController = LMCreateSecondMonitorSettingsNavigationController(@[],
+                                                                                                       nil,
+                                                                                                       [LMStreamProfile defaultSecondMonitorProfile],
+                                                                                                       NO,
+                                                                                                       nil);
+    XCTAssertTrue([navigationController isKindOfClass:[UINavigationController class]]);
+    [navigationController.topViewController loadViewIfNeeded];
+    XCTAssertNotNil(navigationController.topViewController.navigationItem.leftBarButtonItem);
+    XCTAssertNotNil(navigationController.topViewController.navigationItem.rightBarButtonItem);
+}
+
+- (void)testSelectedHostProfileFlowsThroughSettingsSaveCallback {
+    __block NSString *savedHostUUID;
+    __block LMStreamProfile *savedProfile;
+    __block BOOL savedActive;
+    NSDictionary *host = @{ @"uuid": @"selected-host", @"name": @"Test PC" };
+    UINavigationController *navigationController = LMCreateSecondMonitorSettingsNavigationController(@[host],
+                                                                                                       @"selected-host",
+                                                                                                       [LMStreamProfile defaultSecondMonitorProfile],
+                                                                                                       YES,
+                                                                                                       ^(NSString *hostUUID, LMStreamProfile *profile, BOOL active, BOOL diagnostics) {
+        savedHostUUID = hostUUID;
+        savedProfile = profile;
+        savedActive = active;
+    });
+    [navigationController.topViewController loadViewIfNeeded];
+    [navigationController.topViewController performSelector:@selector(saveSettings:) withObject:nil];
+
+    XCTAssertEqualObjects(savedHostUUID, @"selected-host");
+    XCTAssertEqual(savedProfile.mode, LMStreamModeSecondMonitor);
+    XCTAssertTrue(savedActive);
+}
+
+- (void)testStreamInputCleanupMarshalsToTheMainThread {
+    StreamFrameViewController *viewController = [[StreamFrameViewController alloc] init];
+    LMTrackingStreamView *streamView = [[LMTrackingStreamView alloc] initWithFrame:CGRectZero];
+    XCTestExpectation *cleanupExpectation = [self expectationWithDescription:@"stream input cleanup"];
+    streamView.cleanupCompleted = ^{
+        [cleanupExpectation fulfill];
+    };
+    [viewController setValue:streamView forKey:@"streamView"];
+
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT, 0), ^{
+        [viewController performSelector:@selector(cleanupStreamInputOnMainThread)];
+    });
+
+    [self waitForExpectationsWithTimeout:1.0 handler:nil];
+    XCTAssertTrue(streamView.cancelledOnMainThread);
+    XCTAssertTrue(streamView.keyboardReleasedOnMainThread);
 }
 
 - (void)testStatsTimerResetInvalidatesAndClearsExistingTimer {

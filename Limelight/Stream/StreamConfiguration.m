@@ -20,6 +20,14 @@ BOOL LMShouldUseSecondMonitorProfile(BOOL active, LMStreamProfile *profile) {
     return active && profile != nil && profile.mode == LMStreamModeSecondMonitor;
 }
 
+BOOL LMSecondMonitorProfileSelectionIsValid(BOOL active, NSString *hostUUID, LMStreamProfile *profile) {
+    return !active || (hostUUID.length != 0 && profile != nil && profile.mode == LMStreamModeSecondMonitor);
+}
+
+BOOL LMSecondMonitorProfileSupportsExplicit1080p30(BOOL optIn, CGSize resolution, NSInteger fps) {
+    return optIn && CGSizeEqualToSize(resolution, CGSizeMake(1920, 1080)) && fps == 30;
+}
+
 @implementation LMStreamProfile
 
 + (instancetype)defaultSecondMonitorProfile {

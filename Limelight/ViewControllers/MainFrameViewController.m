@@ -625,12 +625,15 @@ static NSMutableSet* hostList;
     }
 
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    [defaults setObject:app.host.uuid forKey:@"Moonlight.SecondMonitor.HostUUID"];
-
     BOOL secondMonitorActive = [defaults boolForKey:@"Moonlight.SecondMonitor.Active"];
-    LMStreamProfile *secondMonitorProfile = secondMonitorActive ? [dataMan getSecondMonitorProfileForHost:app.host.uuid] : nil;
-    if (secondMonitorActive && secondMonitorProfile == nil) {
-        secondMonitorProfile = [LMStreamProfile defaultSecondMonitorProfile];
+    NSString *selectedHostUUID = [defaults stringForKey:@"Moonlight.SecondMonitor.HostUUID"];
+    LMStreamProfile *secondMonitorProfile = selectedHostUUID.length != 0 ? [dataMan getSecondMonitorProfileForHost:selectedHostUUID] : nil;
+    if (secondMonitorActive && (!LMSecondMonitorProfileSelectionIsValid(YES, selectedHostUUID, secondMonitorProfile) ||
+                                ![selectedHostUUID isEqualToString:app.host.uuid])) {
+        [self presentStreamPreparationError:[NSError errorWithDomain:LMProfileValidationDomain
+                                                                  code:LMProfileValidationErrorInvalidValue
+                                                              userInfo:@{NSLocalizedDescriptionKey: @"Choose a valid second-monitor profile for this host before starting the stream."}]];
+        return NO;
     }
     if (LMShouldUseSecondMonitorProfile(secondMonitorActive, secondMonitorProfile)) {
         NSError *profileError = nil;

@@ -55,6 +55,12 @@ FOUNDATION_EXPORT NSString * const LMProfileValidationFieldKey;
 FOUNDATION_EXPORT NSInteger const LMReconnectRetryBudget;
 FOUNDATION_EXPORT NSTimeInterval const LMReconnectMaximumDelay;
 FOUNDATION_EXPORT BOOL LMShouldUseSecondMonitorProfile(BOOL active, LMStreamProfile *profile);
+FOUNDATION_EXPORT BOOL LMSecondMonitorProfileSelectionIsValid(BOOL active,
+                                                             NSString * _Nullable hostUUID,
+                                                             LMStreamProfile * _Nullable profile);
+FOUNDATION_EXPORT BOOL LMSecondMonitorProfileSupportsExplicit1080p30(BOOL optIn,
+                                                                     CGSize resolution,
+                                                                     NSInteger fps);
 
 @interface LMStreamProfile : NSObject <NSCopying>
 

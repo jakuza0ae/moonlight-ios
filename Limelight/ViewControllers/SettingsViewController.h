@@ -8,6 +8,19 @@
 
 #import <UIKit/UIKit.h>
 #import "AppDelegate.h"
+#import "../Stream/StreamConfiguration.h"
+
+typedef void (^LMSecondMonitorSettingsCompletion)(NSString * _Nullable hostUUID,
+                                                  LMStreamProfile *profile,
+                                                  BOOL active,
+                                                  BOOL diagnostics);
+
+FOUNDATION_EXPORT UINavigationController *LMCreateSecondMonitorSettingsNavigationController(
+    NSArray *hosts,
+    NSString * _Nullable selectedHostUUID,
+    LMStreamProfile *profile,
+    BOOL active,
+    LMSecondMonitorSettingsCompletion _Nullable completion);
 
 @interface SettingsViewController : UIViewController
 @property (strong, nonatomic) IBOutlet UILabel *bitrateLabel;

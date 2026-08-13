@@ -69,14 +69,32 @@
     _statsUpdateTimer = nil;
 }
 
+- (void)cleanupStreamInputOnMainThread {
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self cleanupStreamInputOnMainThread];
+        });
+        return;
+    }
+
+    [_streamView cancelAllTouches];
+    [_streamView releaseKeyboardActions];
+}
+
 - (void)stopStream {
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self stopStream];
+        });
+        return;
+    }
+
     _stoppingStream = YES;
     [_reconnectTimer invalidate];
     _reconnectTimer = nil;
     [self invalidateStatsUpdateTimer];
     [_reconnectState stop];
-    [_streamView cancelAllTouches];
-    [_streamView releaseKeyboardActions];
+    [self cleanupStreamInputOnMainThread];
     [_streamMan stopStream];
 }
 
@@ -90,7 +108,7 @@
 }
 
 - (void)stopCurrentStreamWithCompletion:(void (^)(void))completion {
-    [_streamView cancelAllTouches];
+    [self cleanupStreamInputOnMainThread];
     StreamManager *streamManager = _streamMan;
     _streamMan = nil;
     if (streamManager != nil) {
@@ -141,8 +159,14 @@
 }
 
 - (void)beginReconnect {
-    [_streamView cancelAllTouches];
-    [_streamView releaseKeyboardActions];
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self beginReconnect];
+        });
+        return;
+    }
+
+    [self cleanupStreamInputOnMainThread];
     [self invalidateStatsUpdateTimer];
 
     if (![_reconnectState beginReconnect]) {
@@ -449,7 +473,7 @@
     // Reset display mode back to default
     [self updatePreferredDisplayMode:NO];
     [self invalidateStatsUpdateTimer];
-    [_streamView releaseKeyboardActions];
+    [self cleanupStreamInputOnMainThread];
     
     [self.navigationController popToRootViewControllerAnimated:YES];
 }
@@ -523,7 +547,11 @@
         
         [self->_controllerSupport connectionEstablished];
         
-        if (self->_settings.statsOverlay) {
+        BOOL diagnosticsEnabled = self->_settings.statsOverlay;
+        if (self.streamConfig.profile.mode == LMStreamModeSecondMonitor) {
+            diagnosticsEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:@"Moonlight.SecondMonitor.Diagnostics"];
+        }
+        if (diagnosticsEnabled) {
             self->_statsUpdateTimer = [NSTimer scheduledTimerWithTimeInterval:1.0f
                                                                        target:self
                                                                      selector:@selector(updateStatsOverlay)
@@ -543,8 +571,7 @@
         return;
     }
 
-    [_streamView cancelAllTouches];
-    [_streamView releaseKeyboardActions];
+    [self cleanupStreamInputOnMainThread];
     
     unsigned int portFlags = LiGetPortFlagsFromTerminationErrorCode(errorCode);
     unsigned int portTestResults = LiTestClientConnectivity(CONN_TEST_SERVER, 443, portFlags);
@@ -649,6 +676,7 @@
     }
     
     unsigned int portTestResults = LiTestClientConnectivity(CONN_TEST_SERVER, 443, portTestFlags);
+    [self cleanupStreamInputOnMainThread];
 
     dispatch_async(dispatch_get_main_queue(), ^{
         // Allow the display to go to sleep now
@@ -679,6 +707,8 @@
 
 - (void) launchFailed:(NSString*)message {
     Log(LOG_I, @"Launch failed: %@", message);
+
+    [self cleanupStreamInputOnMainThread];
 
     if ([self usesReconnectProfile] && _reconnectState.state == LMStreamStateReconnecting && !_stoppingStream) {
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -789,6 +819,13 @@
 }
 
 - (void) videoContentShown {
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self videoContentShown];
+        });
+        return;
+    }
+
     [_spinner stopAnimating];
     [self.view setBackgroundColor:[UIColor blackColor]];
 }
