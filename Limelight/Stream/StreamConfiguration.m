@@ -16,6 +16,10 @@ NSString * const LMProfileValidationFieldKey = @"field";
 NSInteger const LMReconnectRetryBudget = 3;
 NSTimeInterval const LMReconnectMaximumDelay = 8.0;
 
+BOOL LMShouldUseSecondMonitorProfile(BOOL active, LMStreamProfile *profile) {
+    return active && profile != nil && profile.mode == LMStreamModeSecondMonitor;
+}
+
 @implementation LMStreamProfile
 
 + (instancetype)defaultSecondMonitorProfile {

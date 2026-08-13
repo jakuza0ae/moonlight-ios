@@ -14,6 +14,239 @@
 #import <VideoToolbox/VideoToolbox.h>
 #import <AVFoundation/AVFoundation.h>
 
+typedef void (^LMSecondMonitorSettingsCompletion)(LMStreamProfile *profile, BOOL active, BOOL diagnostics);
+
+@interface LMSecondMonitorSettingsViewController : UIViewController
+@property (nonatomic, copy) NSString *hostUUID;
+@property (nonatomic, copy) LMStreamProfile *profile;
+@property (nonatomic) BOOL active;
+@property (nonatomic, copy) LMSecondMonitorSettingsCompletion completion;
+@end
+
+@implementation LMSecondMonitorSettingsViewController {
+    UIScrollView *_settingsScrollView;
+    UIStackView *_settingsStack;
+    UISegmentedControl *_modeSelector;
+    UISegmentedControl *_resolutionSelector;
+    UISegmentedControl *_fpsSelector;
+    UISlider *_bitrateSlider;
+    UILabel *_bitrateLabel;
+    UISegmentedControl *_audioSelector;
+    UISegmentedControl *_inputModeSelector;
+    UISegmentedControl *_gestureSelector;
+    UISwitch *_reconnectSwitch;
+    UISwitch *_diagnosticsSwitch;
+    NSArray<NSValue *> *_supportedResolutions;
+    NSArray<NSNumber *> *_supportedFrameRates;
+    LMDeviceCapabilityProfile _capabilityProfile;
+}
+
+- (UILabel *)sectionTitle:(NSString *)title {
+    UILabel *label = [[UILabel alloc] init];
+    label.text = title;
+    label.textColor = [UIColor whiteColor];
+    label.font = [UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
+    label.accessibilityTraits = UIAccessibilityTraitHeader;
+    return label;
+}
+
+- (UILabel *)detailLabel:(NSString *)text {
+    UILabel *label = [[UILabel alloc] init];
+    label.text = text;
+    label.textColor = [UIColor lightGrayColor];
+    label.numberOfLines = 0;
+    label.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
+    return label;
+}
+
+- (void)addSectionTitle:(NSString *)title {
+    [_settingsStack addArrangedSubview:[self sectionTitle:title]];
+}
+
+- (void)addControl:(UIView *)control {
+    control.translatesAutoresizingMaskIntoConstraints = NO;
+    [_settingsStack addArrangedSubview:control];
+}
+
+- (NSInteger)selectedIndexForResolution:(CGSize)resolution {
+    for (NSUInteger index = 0; index < _supportedResolutions.count; index++) {
+        if (CGSizeEqualToSize(resolution, _supportedResolutions[index].CGSizeValue)) {
+            return (NSInteger)index;
+        }
+    }
+    return 0;
+}
+
+- (NSInteger)selectedIndexForFrameRate:(NSInteger)frameRate {
+    NSUInteger index = [_supportedFrameRates indexOfObject:@(frameRate)];
+    return index == NSNotFound ? 0 : (NSInteger)index;
+}
+
+- (void)updateBitrateLabel {
+    _bitrateLabel.text = [NSString stringWithFormat:@"Bitrate: %.1f Mbps", _bitrateSlider.value / 1000.0];
+}
+
+- (void)bitrateChanged:(UISlider *)sender {
+    [self updateBitrateLabel];
+}
+
+- (void)gestureChanged:(UISegmentedControl *)sender {
+    if (sender.selectedSegmentIndex == 1) {
+        _inputModeSelector.selectedSegmentIndex = LMInputModeHybrid;
+    }
+    else if (_inputModeSelector.selectedSegmentIndex == LMInputModeHybrid) {
+        _inputModeSelector.selectedSegmentIndex = LMInputModeNativeTouch;
+    }
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title = @"Second Monitor";
+    self.view.backgroundColor = [UIColor colorWithWhite:0.08 alpha:1.0];
+
+    if (self.profile == nil) {
+        self.profile = [LMStreamProfile defaultSecondMonitorProfile];
+    }
+    _capabilityProfile = [LMStreamProfile currentDeviceCapabilityProfile];
+    _supportedResolutions = [LMStreamProfile supportedResolutionsForCapabilityProfile:_capabilityProfile
+                                                               experimental1080pEnabled:self.profile.experimental1080pEnabled];
+    _supportedFrameRates = _capabilityProfile == LMDeviceCapabilityProfileIPadAir ? @[@30] : @[@30, @60];
+
+    self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCancel
+                                                                                            target:self
+                                                                                            action:@selector(cancelSettings:)];
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemSave
+                                                                                             target:self
+                                                                                             action:@selector(saveSettings:)];
+
+    _settingsScrollView = [[UIScrollView alloc] init];
+    _settingsScrollView.translatesAutoresizingMaskIntoConstraints = NO;
+    _settingsScrollView.alwaysBounceVertical = YES;
+    [self.view addSubview:_settingsScrollView];
+    [NSLayoutConstraint activateConstraints:@[
+        [_settingsScrollView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [_settingsScrollView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [_settingsScrollView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [_settingsScrollView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+    ]];
+
+    _settingsStack = [[UIStackView alloc] init];
+    _settingsStack.translatesAutoresizingMaskIntoConstraints = NO;
+    _settingsStack.axis = UILayoutConstraintAxisVertical;
+    _settingsStack.spacing = 12.0;
+    [_settingsScrollView addSubview:_settingsStack];
+    [NSLayoutConstraint activateConstraints:@[
+        [_settingsStack.leadingAnchor constraintEqualToAnchor:_settingsScrollView.contentLayoutGuide.leadingAnchor constant:20.0],
+        [_settingsStack.trailingAnchor constraintEqualToAnchor:_settingsScrollView.contentLayoutGuide.trailingAnchor constant:-20.0],
+        [_settingsStack.topAnchor constraintEqualToAnchor:_settingsScrollView.contentLayoutGuide.topAnchor constant:20.0],
+        [_settingsStack.bottomAnchor constraintEqualToAnchor:_settingsScrollView.contentLayoutGuide.bottomAnchor constant:-20.0],
+        [_settingsStack.widthAnchor constraintEqualToAnchor:_settingsScrollView.frameLayoutGuide.widthAnchor constant:-40.0],
+    ]];
+
+    [self addSectionTitle:@"Profile"];
+    [self addControl:[self detailLabel:self.hostUUID.length != 0 ? [NSString stringWithFormat:@"Host profile: %@", self.hostUUID] : @"Host profile: default until a host is selected"]];
+    _modeSelector = [[UISegmentedControl alloc] initWithItems:@[@"Game mode", @"Second Monitor"]];
+    _modeSelector.selectedSegmentIndex = self.active ? 1 : 0;
+    [self addControl:_modeSelector];
+
+    [self addSectionTitle:@"Resolution"];
+    NSMutableArray<NSString *> *resolutionTitles = [NSMutableArray array];
+    for (NSValue *value in _supportedResolutions) {
+        CGSize resolution = value.CGSizeValue;
+        [resolutionTitles addObject:[NSString stringWithFormat:@"%ld x %ld", (long)resolution.width, (long)resolution.height]];
+    }
+    _resolutionSelector = [[UISegmentedControl alloc] initWithItems:resolutionTitles];
+    _resolutionSelector.selectedSegmentIndex = [self selectedIndexForResolution:self.profile.resolution];
+    [self addControl:_resolutionSelector];
+
+    [self addSectionTitle:@"FPS"];
+    NSMutableArray<NSString *> *frameRateTitles = [NSMutableArray array];
+    for (NSNumber *frameRate in _supportedFrameRates) {
+        [frameRateTitles addObject:[NSString stringWithFormat:@"%@ FPS", frameRate]];
+    }
+    _fpsSelector = [[UISegmentedControl alloc] initWithItems:frameRateTitles];
+    _fpsSelector.selectedSegmentIndex = [self selectedIndexForFrameRate:self.profile.fps];
+    [self addControl:_fpsSelector];
+
+    [self addSectionTitle:@"Bitrate"];
+    _bitrateLabel = [self detailLabel:@""];
+    [self addControl:_bitrateLabel];
+    _bitrateSlider = [[UISlider alloc] init];
+    _bitrateSlider.minimumValue = 500.0;
+    _bitrateSlider.maximumValue = 30000.0;
+    _bitrateSlider.value = MAX(_bitrateSlider.minimumValue, MIN(_bitrateSlider.maximumValue, self.profile.bitrate));
+    [_bitrateSlider addTarget:self action:@selector(bitrateChanged:) forControlEvents:UIControlEventValueChanged];
+    [self addControl:_bitrateSlider];
+    [self updateBitrateLabel];
+
+    [self addSectionTitle:@"Audio"];
+    _audioSelector = [[UISegmentedControl alloc] initWithItems:@[@"Off", @"Host", @"Stream"]];
+    _audioSelector.selectedSegmentIndex = MIN(self.profile.audioPolicy, 2);
+    [self addControl:_audioSelector];
+
+    [self addSectionTitle:@"Input Mode"];
+    _inputModeSelector = [[UISegmentedControl alloc] initWithItems:@[@"Touch", @"Mouse", @"Hybrid"]];
+    _inputModeSelector.selectedSegmentIndex = self.profile.inputMode;
+    [self addControl:_inputModeSelector];
+
+    [self addSectionTitle:@"Gestures"];
+    _gestureSelector = [[UISegmentedControl alloc] initWithItems:@[@"Native gestures", @"Compatibility gestures"]];
+    _gestureSelector.selectedSegmentIndex = self.profile.inputMode == LMInputModeHybrid ? 1 : 0;
+    [_gestureSelector addTarget:self action:@selector(gestureChanged:) forControlEvents:UIControlEventValueChanged];
+    [self addControl:_gestureSelector];
+    [self addControl:[self detailLabel:@"Native touch uses long press and two-finger scrolling. Compatibility gestures use mouse semantics."]];
+
+    [self addSectionTitle:@"Reconnect"];
+    _reconnectSwitch = [[UISwitch alloc] init];
+    _reconnectSwitch.on = self.profile.reconnectEnabled;
+    [self addControl:_reconnectSwitch];
+
+    [self addSectionTitle:@"Diagnostics"];
+    _diagnosticsSwitch = [[UISwitch alloc] init];
+    _diagnosticsSwitch.on = [[NSUserDefaults standardUserDefaults] boolForKey:@"Moonlight.SecondMonitor.Diagnostics"];
+    [self addControl:_diagnosticsSwitch];
+    [self addControl:[self detailLabel:@"Diagnostics are shown from the existing stream statistics when requested."]];
+}
+
+- (void)cancelSettings:(id)sender {
+    [self dismissViewControllerAnimated:YES completion:nil];
+}
+
+- (LMStreamProfile *)profileFromControls {
+    LMStreamProfile *profile = [self.profile copy];
+    profile.mode = LMStreamModeSecondMonitor;
+    profile.resolution = _supportedResolutions[_resolutionSelector.selectedSegmentIndex].CGSizeValue;
+    profile.fps = _supportedFrameRates[_fpsSelector.selectedSegmentIndex].integerValue;
+    profile.bitrate = (NSInteger)roundf(_bitrateSlider.value / 500.0) * 500;
+    profile.audioPolicy = (LMAudioPolicy)_audioSelector.selectedSegmentIndex;
+    profile.inputMode = (LMInputMode)_inputModeSelector.selectedSegmentIndex;
+    profile.reconnectEnabled = _reconnectSwitch.isOn;
+    profile.codec = LMStreamCodecH264;
+    profile.hdrEnabled = NO;
+    profile.experimental1080pEnabled = profile.resolution.width == 1920 && profile.resolution.height == 1080;
+    return profile;
+}
+
+- (void)saveSettings:(id)sender {
+    LMStreamProfile *profile = [self profileFromControls];
+    NSError *error = nil;
+    if (![profile validateForCapabilityProfile:_capabilityProfile error:&error]) {
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Invalid Profile"
+                                                                           message:error.localizedDescription
+                                                                    preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:alert animated:YES completion:nil];
+        return;
+    }
+
+    if (self.completion != nil) {
+        self.completion(profile, _modeSelector.selectedSegmentIndex == 1, _diagnosticsSwitch.isOn);
+    }
+    [self dismissViewControllerAnimated:YES completion:nil];
+}
+
+@end
+
 @implementation SettingsViewController {
     NSInteger _bitrate;
     NSInteger _lastSelectedResolutionIndex;
@@ -317,6 +550,58 @@ BOOL isCustomResolution(CGSize res) {
     [self.bitrateSlider addTarget:self action:@selector(bitrateSliderMoved) forControlEvents:UIControlEventValueChanged];
     [self updateBitrateText];
     [self updateResolutionDisplayViewText];
+
+    if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad) {
+        UIButton *desktopSettingsButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        [desktopSettingsButton setTitle:@"Desktop" forState:UIControlStateNormal];
+        [desktopSettingsButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+        desktopSettingsButton.titleLabel.font = [UIFont systemFontOfSize:16.0 weight:UIFontWeightSemibold];
+        desktopSettingsButton.backgroundColor = [UIColor colorWithWhite:0.12 alpha:1.0];
+        desktopSettingsButton.layer.cornerRadius = 8.0;
+        desktopSettingsButton.translatesAutoresizingMaskIntoConstraints = NO;
+        [desktopSettingsButton addTarget:self action:@selector(showSecondMonitorSettings:) forControlEvents:UIControlEventTouchUpInside];
+        [self.view addSubview:desktopSettingsButton];
+        [NSLayoutConstraint activateConstraints:@[
+            [desktopSettingsButton.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-16.0],
+            [desktopSettingsButton.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:8.0],
+            [desktopSettingsButton.widthAnchor constraintEqualToConstant:150.0],
+            [desktopSettingsButton.heightAnchor constraintEqualToConstant:44.0],
+        ]];
+    }
+}
+
+- (void)showSecondMonitorSettings:(id)sender {
+    DataManager *dataMan = [[DataManager alloc] init];
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSString *hostUUID = [defaults stringForKey:@"Moonlight.SecondMonitor.HostUUID"];
+    if (hostUUID.length == 0) {
+        TemporaryHost *firstHost = [dataMan.getHosts firstObject];
+        hostUUID = firstHost.uuid;
+        if (hostUUID.length != 0) {
+            [defaults setObject:hostUUID forKey:@"Moonlight.SecondMonitor.HostUUID"];
+        }
+    }
+
+    LMStreamProfile *profile = hostUUID.length != 0 ? [dataMan getSecondMonitorProfileForHost:hostUUID] : nil;
+    LMSecondMonitorSettingsViewController *panel = [[LMSecondMonitorSettingsViewController alloc] init];
+    panel.hostUUID = hostUUID;
+    panel.profile = profile ?: [LMStreamProfile defaultSecondMonitorProfile];
+    panel.active = [defaults boolForKey:@"Moonlight.SecondMonitor.Active"];
+    panel.modalPresentationStyle = UIModalPresentationFormSheet;
+    __weak SettingsViewController *weakSelf = self;
+    panel.completion = ^(LMStreamProfile *updatedProfile, BOOL active, BOOL diagnostics) {
+        SettingsViewController *strongSelf = weakSelf;
+        if (strongSelf == nil) {
+            return;
+        }
+
+        if (updatedProfile != nil && hostUUID.length != 0) {
+            [dataMan saveSecondMonitorProfile:updatedProfile forHost:hostUUID];
+        }
+        [defaults setBool:active forKey:@"Moonlight.SecondMonitor.Active"];
+        [defaults setBool:diagnostics forKey:@"Moonlight.SecondMonitor.Diagnostics"];
+    };
+    [self presentViewController:panel animated:YES completion:nil];
 }
 
 - (void) touchModeChanged {

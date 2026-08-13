@@ -49,6 +49,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (instancetype)initWithView:(StreamView *)view;
 - (instancetype)initWithView:(StreamView *)view inputMode:(LMInputMode)inputMode;
+- (void)setInputMode:(LMInputMode)inputMode;
 - (void)cancelAllTouches;
 
 @end

@@ -10,6 +10,7 @@
 #import "StreamView.h"
 #import "ControllerSupport.h"
 #import "Controller.h"
+#import "StreamConfiguration.h"
 #include "Limelight.h"
 
 #define UPDATE_BUTTON(x, y) (buttonFlags = \
@@ -69,6 +70,7 @@
     Controller *_controller;
     NSMutableArray* _deadTouches;
     BOOL _swapABXY;
+    BOOL _desktopMode;
 }
 
 static const float EDGE_WIDTH = .05;
@@ -119,6 +121,8 @@ static float L3_Y;
     _controller = [controllerSupport getOscController];
     _deadTouches = [[NSMutableArray alloc] init];
     _swapABXY = streamConfig.swapABXYButtons;
+    _desktopMode = streamConfig.profile != nil && streamConfig.profile.mode == LMStreamModeSecondMonitor;
+    _level = _desktopMode ? OnScreenControlsLevelOff : OnScreenControlsLevelAuto;
     
     _iPad = ([UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPad);
     _controlArea = CGRectMake(0, 0, _view.frame.size.width, _view.frame.size.height);
@@ -159,12 +163,21 @@ static float L3_Y;
 }
 
 - (void) show {
+    if (_desktopMode) {
+        return;
+    }
+
     _visible = YES;
         
     [self updateControls];
 }
 
 - (void) setLevel:(OnScreenControlsLevel)level {
+    if (_desktopMode) {
+        _level = OnScreenControlsLevelOff;
+        return;
+    }
+
     _level = level;
     
     // Only update controls if we're showing, otherwise
@@ -179,6 +192,16 @@ static float L3_Y;
 }
 
 - (void) updateControls {
+    if (_desktopMode) {
+        [self hideButtons];
+        [self hideBumpers];
+        [self hideTriggers];
+        [self hideStartSelect];
+        [self hideSticks];
+        [self hideL3R3];
+        return;
+    }
+
     switch (_level) {
         case OnScreenControlsLevelOff:
             [self hideButtons];
@@ -553,6 +576,10 @@ static float L3_Y;
 }
 
 - (BOOL) handleTouchMovedEvent:touches {
+    if (_desktopMode) {
+        return NO;
+    }
+
     BOOL updated = false;
     BOOL buttonTouch = false;
     float rsMaxX = RS_CENTER_X + STICK_OUTER_SIZE / 2;
@@ -658,6 +685,10 @@ static float L3_Y;
 }
 
 - (BOOL)handleTouchDownEvent:touches {
+    if (_desktopMode) {
+        return NO;
+    }
+
     BOOL updated = false;
     BOOL stickTouch = false;
     for (UITouch* touch in touches) {
@@ -778,6 +809,10 @@ static float L3_Y;
 }
 
 - (BOOL)handleTouchUpEvent:touches {
+    if (_desktopMode) {
+        return NO;
+    }
+
     BOOL updated = false;
     BOOL touched = false;
     for (UITouch* touch in touches) {

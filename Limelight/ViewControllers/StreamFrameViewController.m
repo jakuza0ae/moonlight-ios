@@ -76,6 +76,7 @@
     [self invalidateStatsUpdateTimer];
     [_reconnectState stop];
     [_streamView cancelAllTouches];
+    [_streamView releaseKeyboardActions];
     [_streamMan stopStream];
 }
 
@@ -141,6 +142,7 @@
 
 - (void)beginReconnect {
     [_streamView cancelAllTouches];
+    [_streamView releaseKeyboardActions];
     [self invalidateStatsUpdateTimer];
 
     if (![_reconnectState beginReconnect]) {
@@ -308,8 +310,11 @@
                                                object: nil];
 #endif
     
-    // Only enable scroll and zoom in absolute touch mode
-    if (_settings.absoluteTouchMode) {
+    BOOL isSecondMonitor = self.streamConfig.profile != nil && self.streamConfig.profile.mode == LMStreamModeSecondMonitor;
+
+    // Only enable scroll and zoom in legacy absolute touch mode. Desktop mode
+    // uses its constrained stream surface directly.
+    if (_settings.absoluteTouchMode && !isSecondMonitor) {
         _scrollView = [[UIScrollView alloc] initWithFrame:self.view.frame];
 #if !TARGET_OS_TV
         [_scrollView.panGestureRecognizer setMinimumNumberOfTouches:2];
@@ -325,7 +330,20 @@
     }
     else {
         // Add StreamView directly in relative mode
-        [self.view addSubview:_streamView];
+        if (isSecondMonitor) {
+            _streamView.translatesAutoresizingMaskIntoConstraints = NO;
+            [self.view addSubview:_streamView];
+            UILayoutGuide *layoutGuide = self.view.safeAreaLayoutGuide;
+            [NSLayoutConstraint activateConstraints:@[
+                [_streamView.leadingAnchor constraintEqualToAnchor:layoutGuide.leadingAnchor],
+                [_streamView.trailingAnchor constraintEqualToAnchor:layoutGuide.trailingAnchor],
+                [_streamView.topAnchor constraintEqualToAnchor:layoutGuide.topAnchor],
+                [_streamView.bottomAnchor constraintEqualToAnchor:layoutGuide.bottomAnchor],
+            ]];
+        }
+        else {
+            [self.view addSubview:_streamView];
+        }
     }
     
     [self.view addSubview:_stageLabel];
@@ -431,6 +449,7 @@
     // Reset display mode back to default
     [self updatePreferredDisplayMode:NO];
     [self invalidateStatsUpdateTimer];
+    [_streamView releaseKeyboardActions];
     
     [self.navigationController popToRootViewControllerAnimated:YES];
 }
@@ -525,6 +544,7 @@
     }
 
     [_streamView cancelAllTouches];
+    [_streamView releaseKeyboardActions];
     
     unsigned int portFlags = LiGetPortFlagsFromTerminationErrorCode(errorCode);
     unsigned int portTestResults = LiTestClientConnectivity(CONN_TEST_SERVER, 443, portFlags);
@@ -801,6 +821,22 @@
     [self returnToMainFrame];
 }
 
+- (void)streamViewDidRequestReconnect:(StreamView *)streamView {
+    if (![self usesReconnectProfile] || _stoppingStream) {
+        return;
+    }
+    [self beginReconnect];
+}
+
+- (void)streamViewDidRequestDiagnostics:(StreamView *)streamView {
+    NSString *stats = [_streamMan getStatsOverlayText];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Diagnostics"
+                                                                       message:stats ?: @"Diagnostics are not available until the stream is connected."
+                                                                preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
 - (void)userInteractionBegan {
     // Disable hiding home bar when user is interacting.
     // iOS will force it to be shown anyway, but it will
@@ -849,6 +885,13 @@
 
 - (BOOL)shouldAutorotate {
     return YES;
+}
+
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations {
+    if (self.streamConfig.profile != nil && self.streamConfig.profile.mode == LMStreamModeSecondMonitor) {
+        return UIInterfaceOrientationMaskLandscape;
+    }
+    return UIInterfaceOrientationMaskAll;
 }
 
 - (BOOL)prefersPointerLocked {

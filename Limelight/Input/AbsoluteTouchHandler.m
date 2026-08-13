@@ -179,6 +179,15 @@ void LMCompatibilityGestureStateReset(LMCompatibilityGestureState *state) {
     return self;
 }
 
+- (void)setInputMode:(LMInputMode)mode {
+    if (inputMode == mode) {
+        return;
+    }
+
+    [self cancelAllTouches];
+    inputMode = mode;
+}
+
 - (void)invalidateLongPressTimer {
     [longPressTimer invalidate];
     longPressTimer = nil;

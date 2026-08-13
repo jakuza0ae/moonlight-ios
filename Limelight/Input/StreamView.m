@@ -16,6 +16,15 @@
 #import "KeyboardInputField.h"
 
 static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
+static const void *LMKeyboardActionAssociationKey = &LMKeyboardActionAssociationKey;
+
+BOOL LMShouldShowDesktopToolbarForStreamConfiguration(StreamConfiguration *streamConfig) {
+    return streamConfig.profile != nil && streamConfig.profile.mode == LMStreamModeSecondMonitor;
+}
+
+BOOL LMShouldShowGamepadOverlayForStreamConfiguration(StreamConfiguration *streamConfig) {
+    return !LMShouldShowDesktopToolbarForStreamConfiguration(streamConfig);
+}
 
 @implementation StreamView {
     OnScreenControls* onScreenControls;
@@ -44,12 +53,21 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     BOOL hasUserInteracted;
     
     NSDictionary<NSString *, NSNumber *> *dictCodes;
+
+    StreamConfiguration *streamConfig;
+    UIView *desktopToolbar;
+    UISegmentedControl *desktopInputModeSelector;
+    BOOL desktopToolbarVisible;
+    BOOL desktopMode;
+    BOOL keyboardTargetInstalled;
 }
 
 - (void) setupStreamView:(ControllerSupport*)controllerSupport
      interactionDelegate:(id<UserInteractionDelegate>)interactionDelegate
-                  config:(StreamConfiguration*)streamConfig {
+                   config:(StreamConfiguration*)streamConfig {
     self->interactionDelegate = interactionDelegate;
+    self->streamConfig = streamConfig;
+    self->desktopMode = LMShouldShowDesktopToolbarForStreamConfiguration(streamConfig);
     self->streamAspectRatio = (float)streamConfig.width / (float)streamConfig.height;
     
     TemporarySettings* settings = [[[DataManager alloc] init] getSettings];
@@ -61,6 +79,10 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     [keyInputField setAutocapitalizationType:UITextAutocapitalizationTypeNone];
     [keyInputField setSpellCheckingType:UITextSpellCheckingTypeNo];
     [self addSubview:keyInputField];
+
+    if (desktopMode) {
+        [self installDesktopToolbar];
+    }
     
 #if TARGET_OS_TV
     // tvOS requires RelativeTouchHandler to manage Apple Remote input
@@ -68,7 +90,10 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
 #else
     // Keep the legacy game gestures behind the compatibility mode. Desktop profiles
     // use native touch or hybrid mode explicitly through StreamConfiguration.
-    if (streamConfig.inputMode == LMInputModeMouseCompatibility) {
+    if (desktopMode) {
+        self->touchHandler = [[AbsoluteTouchHandler alloc] initWithView:self inputMode:streamConfig.inputMode];
+    }
+    else if (streamConfig.inputMode == LMInputModeMouseCompatibility) {
         if (settings.absoluteTouchMode) {
             self->touchHandler = [[AbsoluteTouchHandler alloc] initWithView:self inputMode:LMInputModeMouseCompatibility];
         }
@@ -82,7 +107,7 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     
     onScreenControls = [[OnScreenControls alloc] initWithView:self controllerSup:controllerSupport streamConfig:streamConfig];
     OnScreenControlsLevel level = (OnScreenControlsLevel)[settings.onscreenControls integerValue];
-    if (streamConfig.inputMode != LMInputModeMouseCompatibility) {
+    if (desktopMode || streamConfig.inputMode != LMInputModeMouseCompatibility) {
         Log(LOG_I, @"On-screen controls disabled in native touch mode");
         [onScreenControls setLevel:OnScreenControlsLevelOff];
     }
@@ -135,6 +160,230 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     [self becomeFirstResponder];
 }
 
+- (UIButton *)desktopToolbarButtonWithTitle:(NSString *)title action:(SEL)action {
+    UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+    [button setTitle:title forState:UIControlStateNormal];
+    [button setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    button.titleLabel.font = [UIFont systemFontOfSize:15.0 weight:UIFontWeightSemibold];
+    button.backgroundColor = [UIColor colorWithWhite:0.12 alpha:0.92];
+    button.layer.cornerRadius = 8.0;
+    button.accessibilityLabel = title;
+    button.translatesAutoresizingMaskIntoConstraints = NO;
+    [button addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
+    [button.widthAnchor constraintGreaterThanOrEqualToConstant:52.0].active = YES;
+    [button.heightAnchor constraintGreaterThanOrEqualToConstant:44.0].active = YES;
+    return button;
+}
+
+- (void)installDesktopToolbar {
+    desktopToolbar = [[UIView alloc] init];
+    desktopToolbar.translatesAutoresizingMaskIntoConstraints = NO;
+    desktopToolbar.backgroundColor = [UIColor colorWithWhite:0.04 alpha:0.88];
+    desktopToolbar.layer.cornerRadius = 10.0;
+    desktopToolbar.clipsToBounds = YES;
+    [self addSubview:desktopToolbar];
+
+    NSLayoutYAxisAnchor *topAnchor = self.safeAreaLayoutGuide.topAnchor;
+    [NSLayoutConstraint activateConstraints:@[
+        [desktopToolbar.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8.0],
+        [desktopToolbar.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8.0],
+        [desktopToolbar.topAnchor constraintEqualToAnchor:topAnchor constant:8.0],
+        [desktopToolbar.heightAnchor constraintEqualToConstant:60.0],
+    ]];
+
+    UIButton *hideButton = [self desktopToolbarButtonWithTitle:@"Hide" action:@selector(hideDesktopToolbar:)];
+    UIButton *keyboardButton = [self desktopToolbarButtonWithTitle:@"Keyboard" action:@selector(showDesktopKeyboard:)];
+    UIButton *reconnectButton = [self desktopToolbarButtonWithTitle:@"Reconnect" action:@selector(requestDesktopReconnect:)];
+    UIButton *diagnosticsButton = [self desktopToolbarButtonWithTitle:@"Diagnostics" action:@selector(requestDesktopDiagnostics:)];
+
+    desktopInputModeSelector = [[UISegmentedControl alloc] initWithItems:@[@"Touch", @"Mouse", @"Hybrid"]];
+    desktopInputModeSelector.translatesAutoresizingMaskIntoConstraints = NO;
+    desktopInputModeSelector.selectedSegmentIndex = streamConfig.inputMode;
+    desktopInputModeSelector.accessibilityLabel = @"Input mode";
+    [desktopInputModeSelector addTarget:self action:@selector(desktopInputModeChanged:) forControlEvents:UIControlEventValueChanged];
+    [desktopInputModeSelector.widthAnchor constraintGreaterThanOrEqualToConstant:190.0].active = YES;
+    [desktopInputModeSelector.heightAnchor constraintGreaterThanOrEqualToConstant:44.0].active = YES;
+
+    UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[
+        hideButton, desktopInputModeSelector, keyboardButton, reconnectButton, diagnosticsButton
+    ]];
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    stack.axis = UILayoutConstraintAxisHorizontal;
+    stack.alignment = UIStackViewAlignmentCenter;
+    stack.spacing = 8.0;
+    stack.distribution = UIStackViewDistributionFill;
+    [desktopToolbar addSubview:stack];
+    [NSLayoutConstraint activateConstraints:@[
+        [stack.leadingAnchor constraintEqualToAnchor:desktopToolbar.leadingAnchor constant:8.0],
+        [stack.trailingAnchor constraintEqualToAnchor:desktopToolbar.trailingAnchor constant:-8.0],
+        [stack.topAnchor constraintEqualToAnchor:desktopToolbar.topAnchor constant:8.0],
+        [stack.bottomAnchor constraintEqualToAnchor:desktopToolbar.bottomAnchor constant:-8.0],
+    ]];
+
+    desktopToolbarVisible = NO;
+    desktopToolbar.hidden = YES;
+    desktopToolbar.userInteractionEnabled = NO;
+
+    UIScreenEdgePanGestureRecognizer *revealGesture = [[UIScreenEdgePanGestureRecognizer alloc] initWithTarget:self action:@selector(revealDesktopToolbar:)];
+    revealGesture.edges = UIRectEdgeTop;
+    revealGesture.delaysTouchesBegan = NO;
+    revealGesture.delaysTouchesEnded = NO;
+    [self addGestureRecognizer:revealGesture];
+}
+
+- (void)revealDesktopToolbar:(UIScreenEdgePanGestureRecognizer *)gesture {
+    if (gesture.state == UIGestureRecognizerStateBegan || gesture.state == UIGestureRecognizerStateRecognized) {
+        [self setDesktopToolbarVisible:YES animated:YES];
+    }
+}
+
+- (BOOL)isDesktopToolbarVisible {
+    return desktopToolbarVisible;
+}
+
+- (void)setDesktopToolbarVisible:(BOOL)visible animated:(BOOL)animated {
+    if (!desktopMode || desktopToolbarVisible == visible) {
+        return;
+    }
+
+    desktopToolbarVisible = visible;
+    desktopToolbar.userInteractionEnabled = visible;
+    if (visible) {
+        desktopToolbar.hidden = NO;
+    }
+
+    void (^changes)(void) = ^{
+        self->desktopToolbar.alpha = visible ? 1.0 : 0.0;
+    };
+    void (^completion)(BOOL) = ^(BOOL finished) {
+        if (!visible) {
+            self->desktopToolbar.hidden = YES;
+        }
+    };
+    if (animated) {
+        desktopToolbar.alpha = visible ? 0.0 : 1.0;
+        [UIView animateWithDuration:0.2 animations:changes completion:completion];
+    }
+    else {
+        changes();
+        completion(YES);
+    }
+}
+
+- (void)hideDesktopToolbar:(UIButton *)sender {
+    [self setDesktopToolbarVisible:NO animated:YES];
+}
+
+- (void)desktopInputModeChanged:(UISegmentedControl *)sender {
+    [self setInputMode:(LMInputMode)sender.selectedSegmentIndex];
+}
+
+- (void)setInputMode:(LMInputMode)inputMode {
+    streamConfig.inputMode = inputMode;
+    if ([touchHandler respondsToSelector:@selector(setInputMode:)]) {
+        [(AbsoluteTouchHandler *)touchHandler setInputMode:inputMode];
+    }
+    desktopInputModeSelector.selectedSegmentIndex = inputMode;
+}
+
+- (void)requestDesktopReconnect:(UIButton *)sender {
+    if ([interactionDelegate respondsToSelector:@selector(streamViewDidRequestReconnect:)]) {
+        [interactionDelegate streamViewDidRequestReconnect:self];
+    }
+}
+
+- (void)requestDesktopDiagnostics:(UIButton *)sender {
+    if ([interactionDelegate respondsToSelector:@selector(streamViewDidRequestDiagnostics:)]) {
+        [interactionDelegate streamViewDidRequestDiagnostics:self];
+    }
+}
+
+- (short)keyCodeForDesktopAction:(LMKeyboardAction)action {
+    switch (action) {
+        case LMKeyboardActionEscape:
+            return 0x1B;
+        case LMKeyboardActionTab:
+            return 0x09;
+        case LMKeyboardActionControl:
+            return 0xA2;
+        case LMKeyboardActionShift:
+            return 0xA0;
+        case LMKeyboardActionAlt:
+            return 0xA4;
+        case LMKeyboardActionWindows:
+            return 0x5B;
+        case LMKeyboardActionDelete:
+            return 0x2E;
+    }
+    return 0;
+}
+
+- (void)sendDesktopKeyboardAction:(LMKeyboardAction)action pressed:(BOOL)pressed {
+    LiSendKeyboardEvent([self keyCodeForDesktopAction:action],
+                         pressed ? KEY_ACTION_DOWN : KEY_ACTION_UP,
+                         0);
+}
+
+- (UIBarButtonItem *)desktopKeyboardButtonWithTitle:(NSString *)title action:(LMKeyboardAction)action {
+    UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+    [button setTitle:title forState:UIControlStateNormal];
+    [button setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    button.titleLabel.font = [UIFont systemFontOfSize:14.0 weight:UIFontWeightSemibold];
+    button.backgroundColor = [UIColor blackColor];
+    button.layer.cornerRadius = 6.0;
+    button.accessibilityLabel = title;
+    button.frame = CGRectMake(0, 0, 52, 36);
+    objc_setAssociatedObject(button, LMKeyboardActionAssociationKey, @(action), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [button addTarget:self action:@selector(desktopKeyboardActionDown:) forControlEvents:UIControlEventTouchDown];
+    [button addTarget:self action:@selector(desktopKeyboardActionUp:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
+    return [[UIBarButtonItem alloc] initWithCustomView:button];
+}
+
+- (LMKeyboardAction)desktopKeyboardActionForButton:(UIButton *)button {
+    return [objc_getAssociatedObject(button, LMKeyboardActionAssociationKey) integerValue];
+}
+
+- (void)desktopKeyboardActionDown:(UIButton *)sender {
+    [keyInputField sendKeyboardAction:[self desktopKeyboardActionForButton:sender] pressed:YES];
+}
+
+- (void)desktopKeyboardActionUp:(UIButton *)sender {
+    [keyInputField sendKeyboardAction:[self desktopKeyboardActionForButton:sender] pressed:NO];
+}
+
+- (void)showDesktopKeyboard:(UIButton *)sender {
+    keyInputField.delegate = self;
+    keyInputField.text = @"0";
+    __weak StreamView *weakSelf = self;
+    keyInputField.keyboardActionHandler = ^(LMKeyboardAction action, BOOL pressed) {
+        [weakSelf sendDesktopKeyboardAction:action pressed:pressed];
+    };
+    if (!keyboardTargetInstalled) {
+        [keyInputField addTarget:self action:@selector(onKeyboardPressed:) forControlEvents:UIControlEventEditingChanged];
+        keyboardTargetInstalled = YES;
+    }
+
+    UIToolbar *toolbar = [[UIToolbar alloc] initWithFrame:CGRectMake(0, 0, self.bounds.size.width, 44.0)];
+    UIBarButtonItem *flexibleSpace = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil];
+    toolbar.items = @[
+        [self desktopKeyboardButtonWithTitle:@"Esc" action:LMKeyboardActionEscape],
+        [self desktopKeyboardButtonWithTitle:@"Tab" action:LMKeyboardActionTab],
+        [self desktopKeyboardButtonWithTitle:@"Ctrl" action:LMKeyboardActionControl],
+        [self desktopKeyboardButtonWithTitle:@"Shift" action:LMKeyboardActionShift],
+        [self desktopKeyboardButtonWithTitle:@"Alt" action:LMKeyboardActionAlt],
+        [self desktopKeyboardButtonWithTitle:@"Win" action:LMKeyboardActionWindows],
+        [self desktopKeyboardButtonWithTitle:@"Del" action:LMKeyboardActionDelete],
+        flexibleSpace,
+    ];
+    keyInputField.inputAccessoryView = toolbar;
+    isInputingText = YES;
+    [keyInputField becomeFirstResponder];
+}
+
+- (void)releaseKeyboardActions {
+    [keyInputField releaseAllKeyboardActions];
+}
+
 - (void)startInteractionTimer {
     // Restart user interaction tracking
     hasUserInteracted = NO;
@@ -177,12 +426,14 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     if ([touchHandler respondsToSelector:@selector(cancelAllTouches)]) {
         [touchHandler cancelAllTouches];
     }
+    [self releaseKeyboardActions];
 }
 
 - (void)didMoveToWindow {
     [super didMoveToWindow];
     if (self.window == nil) {
         [self cancelAllTouches];
+        [keyInputField resignFirstResponder];
     }
 }
 
@@ -364,30 +615,32 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
                 // Prepare the textbox used to capture keyboard events.
                 keyInputField.delegate = self;
                 keyInputField.text = @"0";
+                if (desktopMode) {
+                    [self showDesktopKeyboard:nil];
+                }
+                else {
 #if !TARGET_OS_TV
-                // Prepare the toolbar above the keyboard for more options
-                UIToolbar *customToolbarView = [[UIToolbar alloc] initWithFrame:CGRectMake(0, 0, self.bounds.size.width, 44)];
-                
-                UIBarButtonItem *doneBarButton = [self createButtonWithImageNamed:@"DoneIcon.png" backgroundColor:[UIColor clearColor] target:self action:@selector(toolbarButtonClicked:) keyCode:0x00 isToggleable:NO];
-                UIBarButtonItem *windowsBarButton = [self createButtonWithImageNamed:@"WindowsIcon.png" backgroundColor:[UIColor blackColor] target:self action:@selector(toolbarButtonClicked:) keyCode:0x5B isToggleable:YES];
-                UIBarButtonItem *tabBarButton = [self createButtonWithImageNamed:@"TabIcon.png" backgroundColor:[UIColor blackColor] target:self action:@selector(toolbarButtonClicked:) keyCode:0x09 isToggleable:NO];
-                UIBarButtonItem *shiftBarButton = [self createButtonWithImageNamed:@"ShiftIcon.png" backgroundColor:[UIColor blackColor] target:self action:@selector(toolbarButtonClicked:) keyCode:0xA0 isToggleable:YES];
-                UIBarButtonItem *escapeBarButton = [self createButtonWithImageNamed:@"EscapeIcon.png" backgroundColor:[UIColor blackColor] target:self action:@selector(toolbarButtonClicked:) keyCode:0x1B isToggleable:NO];
-                UIBarButtonItem *controlBarButton = [self createButtonWithImageNamed:@"ControlIcon.png" backgroundColor:[UIColor blackColor] target:self action:@selector(toolbarButtonClicked:) keyCode:0xA2 isToggleable:YES];
-                UIBarButtonItem *altBarButton = [self createButtonWithImageNamed:@"AltIcon.png" backgroundColor:[UIColor blackColor] target:self action:@selector(toolbarButtonClicked:) keyCode:0xA4 isToggleable:YES];
-                UIBarButtonItem *deleteBarButton = [self createButtonWithImageNamed:@"DeleteIcon.png" backgroundColor:[UIColor blackColor] target:self action:@selector(toolbarButtonClicked:) keyCode:0x2E isToggleable:NO];
-                UIBarButtonItem *flexibleSpace = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil];
-                
-                [customToolbarView setItems:[NSArray arrayWithObjects:doneBarButton, windowsBarButton, escapeBarButton, tabBarButton, shiftBarButton, controlBarButton, altBarButton, deleteBarButton, flexibleSpace, nil]];
-                keyInputField.inputAccessoryView = customToolbarView;
+                    // Prepare the toolbar above the keyboard for more options.
+                    UIToolbar *customToolbarView = [[UIToolbar alloc] initWithFrame:CGRectMake(0, 0, self.bounds.size.width, 44)];
+                    UIBarButtonItem *doneBarButton = [self createButtonWithImageNamed:@"DoneIcon.png" backgroundColor:[UIColor clearColor] target:self action:@selector(toolbarButtonClicked:) keyCode:0x00 isToggleable:NO];
+                    UIBarButtonItem *windowsBarButton = [self createButtonWithImageNamed:@"WindowsIcon.png" backgroundColor:[UIColor blackColor] target:self action:@selector(toolbarButtonClicked:) keyCode:0x5B isToggleable:YES];
+                    UIBarButtonItem *tabBarButton = [self createButtonWithImageNamed:@"TabIcon.png" backgroundColor:[UIColor blackColor] target:self action:@selector(toolbarButtonClicked:) keyCode:0x09 isToggleable:NO];
+                    UIBarButtonItem *shiftBarButton = [self createButtonWithImageNamed:@"ShiftIcon.png" backgroundColor:[UIColor blackColor] target:self action:@selector(toolbarButtonClicked:) keyCode:0xA0 isToggleable:YES];
+                    UIBarButtonItem *escapeBarButton = [self createButtonWithImageNamed:@"EscapeIcon.png" backgroundColor:[UIColor blackColor] target:self action:@selector(toolbarButtonClicked:) keyCode:0x1B isToggleable:NO];
+                    UIBarButtonItem *controlBarButton = [self createButtonWithImageNamed:@"ControlIcon.png" backgroundColor:[UIColor blackColor] target:self action:@selector(toolbarButtonClicked:) keyCode:0xA2 isToggleable:YES];
+                    UIBarButtonItem *altBarButton = [self createButtonWithImageNamed:@"AltIcon.png" backgroundColor:[UIColor blackColor] target:self action:@selector(toolbarButtonClicked:) keyCode:0xA4 isToggleable:YES];
+                    UIBarButtonItem *deleteBarButton = [self createButtonWithImageNamed:@"DeleteIcon.png" backgroundColor:[UIColor blackColor] target:self action:@selector(toolbarButtonClicked:) keyCode:0x2E isToggleable:NO];
+                    UIBarButtonItem *flexibleSpace = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil];
+                    [customToolbarView setItems:@[doneBarButton, windowsBarButton, escapeBarButton, tabBarButton, shiftBarButton, controlBarButton, altBarButton, deleteBarButton, flexibleSpace]];
+                    keyInputField.inputAccessoryView = customToolbarView;
 #endif
-                [keyInputField becomeFirstResponder];
-                [keyInputField addTarget:self action:@selector(onKeyboardPressed:) forControlEvents:UIControlEventEditingChanged];
-                
-                // Undo causes issues for our state management, so turn it off
+                    [keyInputField becomeFirstResponder];
+                    [keyInputField addTarget:self action:@selector(onKeyboardPressed:) forControlEvents:UIControlEventEditingChanged];
+                    isInputingText = true;
+                }
+
+                // Undo causes issues for our state management, so turn it off.
                 [keyInputField.undoManager disableUndoRegistration];
-                
-                isInputingText = true;
             }
         }
     }
@@ -776,6 +1029,7 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
 }
 
 - (void)textFieldDidEndEditing:(UITextField *)textField {
+    [keyInputField releaseAllKeyboardActions];
     for (NSNumber* keyCode in keysDown) {
         LiSendKeyboardEvent([keyCode shortValue], KEY_ACTION_UP, 0);
     }
@@ -900,6 +1154,7 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
 
 - (void)dealloc {
     [self cancelAllTouches];
+    [keyInputField releaseAllKeyboardActions];
 }
 
 - (void)connectedStateDidChangeWithIdentifier:(NSUUID * _Nonnull)identifier isConnected:(BOOL)isConnected {

@@ -8,7 +8,74 @@
 
 #import "KeyboardInputField.h"
 
-@implementation KeyboardInputField
+@implementation KeyboardInputField {
+    NSMutableSet<NSNumber *> *_activeKeyboardActions;
+}
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self != nil) {
+        _activeKeyboardActions = [[NSMutableSet alloc] init];
+    }
+    return self;
+}
+
+- (BOOL)isModifierAction:(LMKeyboardAction)action {
+    return action == LMKeyboardActionControl ||
+        action == LMKeyboardActionShift ||
+        action == LMKeyboardActionAlt ||
+        action == LMKeyboardActionWindows;
+}
+
+- (void)sendKeyboardAction:(LMKeyboardAction)action pressed:(BOOL)pressed {
+    NSNumber *actionNumber = @(action);
+    if ([self isModifierAction:action]) {
+        if (pressed) {
+            if ([_activeKeyboardActions containsObject:actionNumber]) {
+                return;
+            }
+            [_activeKeyboardActions addObject:actionNumber];
+        }
+        else if (![_activeKeyboardActions containsObject:actionNumber]) {
+            return;
+        }
+        else {
+            [_activeKeyboardActions removeObject:actionNumber];
+        }
+
+        if (self.keyboardActionHandler != nil) {
+            self.keyboardActionHandler(action, pressed);
+        }
+        return;
+    }
+
+    if (pressed && self.keyboardActionHandler != nil) {
+        self.keyboardActionHandler(action, YES);
+        self.keyboardActionHandler(action, NO);
+    }
+}
+
+- (void)releaseAllKeyboardActions {
+    NSArray<NSNumber *> *actions = [_activeKeyboardActions allObjects];
+    for (NSNumber *actionNumber in actions) {
+        [self sendKeyboardAction:actionNumber.integerValue pressed:NO];
+    }
+    [_activeKeyboardActions removeAllObjects];
+}
+
+- (BOOL)resignFirstResponder {
+    BOOL resigned = [super resignFirstResponder];
+    [self releaseAllKeyboardActions];
+    return resigned;
+}
+
+- (NSSet<NSNumber *> *)activeKeyboardActions {
+    return [_activeKeyboardActions copy];
+}
+
+- (void)dealloc {
+    [self releaseAllKeyboardActions];
+}
 
 - (UIEditingInteractionConfiguration) editingInteractionConfiguration {
     // Suppress the Undo menu that appears with a 3 finger tap

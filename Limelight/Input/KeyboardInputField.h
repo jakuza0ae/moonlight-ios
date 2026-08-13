@@ -6,12 +6,29 @@
 //  Copyright © 2022 Moonlight Game Streaming Project. All rights reserved.
 //
 
-#import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
+typedef NS_ENUM(NSInteger, LMKeyboardAction) {
+    LMKeyboardActionEscape,
+    LMKeyboardActionTab,
+    LMKeyboardActionControl,
+    LMKeyboardActionShift,
+    LMKeyboardActionAlt,
+    LMKeyboardActionWindows,
+    LMKeyboardActionDelete,
+};
+
+typedef void (^LMKeyboardActionHandler)(LMKeyboardAction action, BOOL pressed);
+
 @interface KeyboardInputField : UITextField
 
+- (void)sendKeyboardAction:(LMKeyboardAction)action pressed:(BOOL)pressed;
+- (void)releaseAllKeyboardActions;
+- (NSSet<NSNumber *> *)activeKeyboardActions;
+
+@property (nonatomic, copy, nullable) LMKeyboardActionHandler keyboardActionHandler;
 
 @end
 

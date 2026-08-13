@@ -624,8 +624,15 @@ static NSMutableSet* hostList;
         return NO;
     }
 
-    LMStreamProfile *secondMonitorProfile = [dataMan getSecondMonitorProfileForHost:app.host.uuid];
-    if (secondMonitorProfile != nil) {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setObject:app.host.uuid forKey:@"Moonlight.SecondMonitor.HostUUID"];
+
+    BOOL secondMonitorActive = [defaults boolForKey:@"Moonlight.SecondMonitor.Active"];
+    LMStreamProfile *secondMonitorProfile = secondMonitorActive ? [dataMan getSecondMonitorProfileForHost:app.host.uuid] : nil;
+    if (secondMonitorActive && secondMonitorProfile == nil) {
+        secondMonitorProfile = [LMStreamProfile defaultSecondMonitorProfile];
+    }
+    if (LMShouldUseSecondMonitorProfile(secondMonitorActive, secondMonitorProfile)) {
         NSError *profileError = nil;
         if (![_streamConfig applyProfile:secondMonitorProfile error:&profileError]) {
             [self presentStreamPreparationError:profileError];

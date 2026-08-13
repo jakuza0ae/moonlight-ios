@@ -48,10 +48,13 @@ typedef NS_ENUM(NSInteger, LMProfileValidationErrorCode) {
     LMProfileValidationErrorExperimentalResolutionDisabled,
 };
 
+@class LMStreamProfile;
+
 FOUNDATION_EXPORT NSString * const LMProfileValidationDomain;
 FOUNDATION_EXPORT NSString * const LMProfileValidationFieldKey;
 FOUNDATION_EXPORT NSInteger const LMReconnectRetryBudget;
 FOUNDATION_EXPORT NSTimeInterval const LMReconnectMaximumDelay;
+FOUNDATION_EXPORT BOOL LMShouldUseSecondMonitorProfile(BOOL active, LMStreamProfile *profile);
 
 @interface LMStreamProfile : NSObject <NSCopying>
 

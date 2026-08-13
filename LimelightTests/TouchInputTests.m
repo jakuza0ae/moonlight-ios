@@ -5,6 +5,8 @@
 #import "StreamConfiguration.h"
 #import "Connection.h"
 #import "StreamFrameViewController.h"
+#import "KeyboardInputField.h"
+#import "StreamView.h"
 
 @interface TouchInputTests : XCTestCase
 @end
@@ -397,6 +399,58 @@
     XCTAssertTrue([state beginReconnect]);
     XCTAssertFalse([state beginReconnect]);
     XCTAssertEqual(state.state, LMStreamStateFailed);
+}
+
+- (void)testKeyboardActionStateReleasesHeldModifiers {
+    KeyboardInputField *field = [[KeyboardInputField alloc] initWithFrame:CGRectZero];
+
+    [field sendKeyboardAction:LMKeyboardActionControl pressed:YES];
+    [field sendKeyboardAction:LMKeyboardActionShift pressed:YES];
+    XCTAssertEqual(field.activeKeyboardActions.count, 2U);
+
+    [field sendKeyboardAction:LMKeyboardActionControl pressed:NO];
+    XCTAssertEqualObjects(field.activeKeyboardActions, [NSSet setWithObject:@(LMKeyboardActionShift)]);
+
+    [field releaseAllKeyboardActions];
+    XCTAssertEqual(field.activeKeyboardActions.count, 0U);
+}
+
+- (void)testKeyboardFunctionActionsDoNotRemainHeld {
+    KeyboardInputField *field = [[KeyboardInputField alloc] initWithFrame:CGRectZero];
+
+    [field sendKeyboardAction:LMKeyboardActionEscape pressed:YES];
+    XCTAssertEqual(field.activeKeyboardActions.count, 0U);
+    [field sendKeyboardAction:LMKeyboardActionDelete pressed:YES];
+    XCTAssertEqual(field.activeKeyboardActions.count, 0U);
+}
+
+- (void)testKeyboardDismissalReleasesHeldModifiers {
+    KeyboardInputField *field = [[KeyboardInputField alloc] initWithFrame:CGRectZero];
+
+    [field sendKeyboardAction:LMKeyboardActionAlt pressed:YES];
+    [field resignFirstResponder];
+
+    XCTAssertEqual(field.activeKeyboardActions.count, 0U);
+}
+
+- (void)testSecondMonitorToolbarAndOverlayPredicatesDoNotApplyToGameMode {
+    LMStreamProfile *profile = [LMStreamProfile defaultSecondMonitorProfile];
+    StreamConfiguration *desktopConfiguration = [[StreamConfiguration alloc] init];
+    desktopConfiguration.profile = profile;
+
+    StreamConfiguration *gameConfiguration = [[StreamConfiguration alloc] init];
+
+    XCTAssertTrue(LMShouldShowDesktopToolbarForStreamConfiguration(desktopConfiguration));
+    XCTAssertFalse(LMShouldShowDesktopToolbarForStreamConfiguration(gameConfiguration));
+    XCTAssertFalse(LMShouldShowGamepadOverlayForStreamConfiguration(desktopConfiguration));
+    XCTAssertTrue(LMShouldShowGamepadOverlayForStreamConfiguration(gameConfiguration));
+}
+
+- (void)testStoredSecondMonitorProfileRequiresExplicitActivation {
+    LMStreamProfile *profile = [LMStreamProfile defaultSecondMonitorProfile];
+
+    XCTAssertFalse(LMShouldUseSecondMonitorProfile(NO, profile));
+    XCTAssertTrue(LMShouldUseSecondMonitorProfile(YES, profile));
 }
 
 - (void)testStatsTimerResetInvalidatesAndClearsExistingTimer {
