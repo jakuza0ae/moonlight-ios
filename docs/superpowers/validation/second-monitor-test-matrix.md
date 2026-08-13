@@ -2,6 +2,34 @@
 
 This matrix covers the existing VDD-only second-monitor path across Sunshine and Moonlight. A check is `PASS` only when the stated environment and evidence are available. `BLOCKED/NOT RUN` means the environment or live hardware was unavailable; it is never a pass or a failure.
 
+## Diagnostic Contract
+
+The shared diagnostic record uses these fields and JSON spellings:
+
+```json
+{
+  "state": "capturing",
+  "host_display_id": "{vdd-guid}",
+  "mapped_output": "\\\\.\\DISPLAY2",
+  "capture_backend": "ddx",
+  "encoder": "h264_nvenc",
+  "codec": "h264",
+  "resolution": "1280x720",
+  "fps": 30,
+  "bitrate_kbps": 5000,
+  "rtt_ms": null,
+  "dropped_frames": null,
+  "reconnect_count": null,
+  "last_error": null
+}
+```
+
+- `state` is one of `waiting_for_vdd`, `display_configuring`, `capturing`, `capture_reinitializing`, `display_restore_pending`, `display_restore_failed`, `connecting`, `waiting_for_display`, `streaming`, `reconnecting`, `failed`, or `stopped`.
+- `rtt_ms`, `dropped_frames`, and `reconnect_count` are nullable on Sunshine because this host status path has no host-side telemetry source for those values. Sunshine must return JSON `null`, not zero, when unavailable.
+- Moonlight's local record contains client-side RTT, dropped-frame, and reconnect values. Its host display, mapped output, capture backend, and encoder fields remain null unless an authenticated host status source is added; the overlay renders null as `unavailable`.
+- Sunshine and Moonlight bound diagnostic text fields to 128 characters and the formatted Moonlight overlay to 2048 characters. Dangerous or command-like text is rendered as `redacted`.
+- Sunshine preserves the existing lifecycle state names, and Moonlight preserves its existing stream state names. The union above is the compatibility contract; a consumer must not infer a host state from a client state.
+
 ## Target Profile
 
 - Baseline: `1280x720 @ 30 FPS`, H.264, conservative bitrate, host audio disabled.
@@ -11,32 +39,32 @@ This matrix covers the existing VDD-only second-monitor path across Sunshine and
 
 ## Automated Checks
 
-| Check | Repository | Evidence | Current status |
+| Check | Repository | What is actually covered | Execution status |
 | --- | --- | --- | --- |
-| Diagnostic JSON allowlist and redaction | Sunshine | Unit test for state, display identity, metrics, and secret/command absence | BLOCKED/NOT RUN: CTest/toolchain unavailable on the current Windows session |
-| Second-monitor lifecycle and selection tests | Sunshine | Unit tests for VDD availability, wrong identity, hotplug remapping, and final restore | BLOCKED/NOT RUN: CTest/toolchain unavailable on the current Windows session |
-| Diagnostic overlay formatter | Moonlight | XCTest formatter coverage for the bounded record | BLOCKED/NOT RUN: Xcode is unavailable on the current Windows session |
+| Diagnostic JSON schema, nullability, and redaction | Sunshine | Unit tests for state, stable identity, nullable metrics, metadata sanitization, and secret/command absence | BLOCKED/NOT RUN: CTest/toolchain unavailable on the current Windows session |
+| Display selection and lifecycle gates | Sunshine | Unit tests for VDD availability, wrong identity, selection order, retry state, owner counting, and restore request gating; no OS hotplug or display-restore side effect | BLOCKED/NOT RUN: CTest/toolchain unavailable on the current Windows session |
+| Diagnostic formatter and legacy overlay formatter | Moonlight | XCTest coverage for nullable host fields, state, per-field/total bounds, redaction, and legacy game-mode format | BLOCKED/NOT RUN: Xcode is unavailable on the current Windows session |
 | iOS 12 Simulator build and smoke tests | Moonlight | `xcodebuild` Simulator build/test output | BLOCKED/NOT RUN: macOS/Xcode unavailable |
 | Unsigned device archive | Moonlight | macOS `xcodebuild archive` output with signing disabled | BLOCKED/NOT RUN: macOS/Xcode unavailable |
 
 ## Manual Matrix
 
-| ID | Scenario | Simulator check | iPad Air 1 check | Expected evidence |
-| --- | --- | --- | --- | --- |
-| VDD-01 | VDD present and selected | Verify the profile requires an explicit host and device ID; no physical display is available in the simulator | Enumerate the existing VDD, select its positive virtual identity, launch the baseline profile | Sunshine status shows `capturing`, the selected host display ID, mapped output, `virtual_device=true`, and the requested mode |
-| VDD-02 | VDD missing at launch | Exercise profile validation and the waiting state with the live host unavailable | Remove or disable the VDD before launch, then restore it | Launch waits with `waiting_for_vdd`; no physical output is selected; re-enumeration can proceed without changing the GUID |
-| VDD-03 | Wrong GUID | Verify invalid profile selection is rejected without implicit host/device substitution | Configure a nonexistent GUID while a physical monitor is present | Launch is rejected or remains unavailable; the physical monitor is never used as fallback |
-| VDD-04 | Physical-monitor fallback prevention | Confirm the UI does not offer an unverified physical display | Keep a physical monitor active and select a physical/unknown identity | Sunshine reports unavailable for the second-monitor profile; capture does not start on the physical monitor |
-| VDD-05 | VDD hotplug and remapping | Exercise lifecycle state handling and reconnect UI without claiming a device result | Remove and re-add the VDD while streaming, then repeat with a changed platform output name | The stable VDD device ID remains selected, mapped output is refreshed, and the overlay/status records the reinitialization reason |
-| MODE-01 | 720p30 baseline | Verify profile/settings serialization and overlay formatting | Run `1280x720 @ 30 FPS` for a sustained session | Record actual FPS, bitrate, RTT, dropped frames, codec, and last error; baseline is PASS only with device evidence |
-| MODE-02 | 1080p30 opt-in | Verify the explicit opt-in and validation path | Enable the experimental switch, run `1920x1080 @ 30 FPS`, and compare stability against MODE-01 | Record memory pressure, decode stability, reconnects, and dropped frames; do not infer 1080p stability from simulator output |
-| TOUCH-01 | Touch lifecycle | Exercise tap, drag, long press, and release through the simulated view | Repeat tap, drag, long press, and interrupted contact on the physical display session | Every contact ends with release or cancel; no stuck touch remains after stream stop |
-| TOUCH-02 | Multi-touch cancellation | Start multiple contacts and trigger view cancellation | Repeat with two or more contacts, including disconnect/reconnect during contact | All active contacts emit cancellation/release, and the next session starts with no stale contacts |
-| NET-01 | Wi-Fi interruption | Exercise reconnect state transitions with a simulated connection interruption | Disable Wi-Fi or interrupt the access point, restore it, and observe the bounded retry path | Stream shows reconnecting, retains host/profile, increments reconnect count, and either recovers or shows the bounded failure |
-| NET-02 | Final restore | Verify teardown calls the restore gate once | End the final session after normal stop, failed launch, and reconnect exhaustion | Saved display configuration is restored once; status is `waiting_for_vdd` on success or `display_restore_failed` with a recorded error |
-| DIAG-01 | Diagnostic response safety | Inspect formatter output with test values | Fetch authenticated `GET /api/second-monitor/status` while active | Output contains state/display/stream metrics only; it contains no password, pairing key, secret, or arbitrary command content |
-| DIAG-02 | Bounded video-path diagnostics | Confirm the overlay uses the existing timer | Leave the diagnostics overlay visible during a sustained physical session | Sampling remains at the existing one-second UI timer; no per-frame diagnostic logging is added |
+| ID | Scenario | Existing automated coverage | Simulator/manual check | iPad Air 1 + live Windows check | Current status |
+| --- | --- | --- | --- | --- | --- |
+| VDD-01 | VDD present and selected | Selection unit tests only; no live VDD enumeration | No physical VDD available | Enumerate the existing VDD, select its positive virtual identity, launch baseline | BLOCKED/NOT RUN: live Windows host and device unavailable |
+| VDD-02 | VDD missing at launch | Waiting-state unit test only; no driver removal/reappearance | No live host state | Remove/disable VDD before launch, restore it, and confirm stable GUID | BLOCKED/NOT RUN: live Windows host and device unavailable |
+| VDD-03 | Wrong GUID | Wrong/missing selection unit tests | Profile validation only; no live host | Configure nonexistent GUID with a physical monitor present | BLOCKED/NOT RUN: live Windows host and device unavailable |
+| VDD-04 | Physical-monitor fallback prevention | Physical/unknown identity rejection unit tests | No physical fallback available | Keep a physical monitor active and verify capture does not use it | BLOCKED/NOT RUN: live Windows host and device unavailable |
+| VDD-05 | VDD hotplug and remapping | Selection/lifecycle logic only; no OS hotplug simulation | No live host state | Remove/re-add VDD and verify stable ID, mapped output, and reinitialization state | BLOCKED/NOT RUN: live Windows host and device unavailable |
+| MODE-01 | 720p30 baseline | Profile serialization and formatter unit coverage | No decoder/performance evidence | Run `1280x720 @ 30 FPS` and record client metrics; host RTT/drops/reconnect remain nullable | BLOCKED/NOT RUN: iPad Air 1 unavailable |
+| MODE-02 | 1080p30 opt-in | Profile opt-in validation unit coverage | No decoder/performance evidence | Run `1920x1080 @ 30 FPS` and compare measured stability with MODE-01 | BLOCKED/NOT RUN: iPad Air 1 unavailable |
+| TOUCH-01 | Touch lifecycle | Existing touch unit coverage; no device smoke | Simulator interaction only after Xcode is available | Repeat tap, drag, long press, and interrupted contact on the physical session | BLOCKED/NOT RUN: Xcode/device unavailable |
+| TOUCH-02 | Multi-touch cancellation | Existing cancellation unit coverage; no device smoke | Simulator interaction only after Xcode is available | Repeat multi-touch and cancellation during disconnect/reconnect | BLOCKED/NOT RUN: Xcode/device unavailable |
+| NET-01 | Wi-Fi interruption | Reconnect state-machine unit coverage; no network interruption | No Wi-Fi interruption evidence | Interrupt Wi-Fi, restore it, and observe bounded retry/reconnect count | BLOCKED/NOT RUN: live host/device unavailable |
+| NET-02 | Final restore | Restore-request gate unit coverage; no display restore side effect | No physical display state | End final session after normal stop, failed launch, and retry exhaustion | BLOCKED/NOT RUN: live Windows host unavailable |
+| DIAG-01 | Diagnostic response safety | Serializer/formatter unit coverage; no authenticated endpoint integration test | Formatter only after Xcode is available | Fetch authenticated status endpoint while active and inspect allowlist | BLOCKED/NOT RUN: live host/device unavailable |
+| DIAG-02 | Bounded video-path diagnostics | No automated sampling-rate assertion | Overlay timing only after Xcode is available | Leave overlay visible during a sustained session and inspect sampling/log volume | BLOCKED/NOT RUN: live host/device unavailable |
 
 ## Run Notes
 
-For every physical run, record the iPad Air 1 model identifier, iOS version, Sunshine build, VDD provider/driver, host GPU/encoder, Wi-Fi band, requested profile, measured stable mode, reconnect count, dropped frames, and final restore result. Mark missing host/device access as `BLOCKED/NOT RUN` and include the prerequisite needed to run it.
+For every physical run, record the iPad Air 1 model identifier, iOS version, Sunshine build, VDD provider/driver, host GPU/encoder, Wi-Fi band, requested profile, measured stable mode, client reconnect count, client dropped frames, nullable host metrics, and final restore result. Mark missing host/device access as `BLOCKED/NOT RUN` and include the prerequisite needed to run it.

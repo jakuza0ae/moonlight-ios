@@ -101,6 +101,7 @@
     [self invalidateStatsUpdateTimer];
     [_reconnectState stop];
     [self cleanupStreamInputOnMainThread];
+    [_streamMan setDiagnosticState:@"stopped"];
     [_streamMan stopStream];
 }
 
@@ -132,6 +133,7 @@
 - (void)showReconnectFailure:(NSString *)message {
     [self recordDiagnosticError:@"reconnect_failed"];
     [self stopStream];
+    [_streamMan setDiagnosticState:@"failed"];
     [_reconnectState fail];
     _streamState = LMStreamStateFailed;
 
@@ -161,6 +163,7 @@
     _streamMan = [[StreamManager alloc] initWithConfig:_reconnectConfig
                                              renderView:_streamView
                                     connectionCallbacks:self];
+    [_streamMan setDiagnosticState:@"connecting"];
     [_streamMan setReconnectCount:_reconnectState.retryCount];
     [_streamMan setLastError:_lastDiagnosticError];
     NSOperationQueue *opQueue = [[NSOperationQueue alloc] init];
@@ -184,6 +187,7 @@
     }
 
     _streamState = LMStreamStateReconnecting;
+    [_streamMan setDiagnosticState:@"reconnecting"];
     [_stageLabel setText:@"Reconnecting..."];
     [_stageLabel sizeToFit];
     _stageLabel.hidden = NO;
@@ -543,6 +547,7 @@
     Log(LOG_I, @"Connection started");
     dispatch_async(dispatch_get_main_queue(), ^{
         self->_streamState = LMStreamStateStreaming;
+        [self->_streamMan setDiagnosticState:@"streaming"];
         [self->_reconnectState connectionStarted];
         [self->_reconnectTimer invalidate];
         self->_reconnectTimer = nil;
@@ -572,6 +577,9 @@
 
 - (void)connectionTerminated:(int)errorCode {
     Log(LOG_I, @"Connection terminated: %d", errorCode);
+    if (errorCode != ML_ERROR_GRACEFUL_TERMINATION) {
+        [_streamMan setDiagnosticState:@"failed"];
+    }
 
     if ([self usesReconnectProfile] && !_stoppingStream && errorCode != ML_ERROR_GRACEFUL_TERMINATION) {
         [self recordDiagnosticError:@"connection_terminated"];
@@ -678,6 +686,7 @@
 - (void) stageFailed:(const char*)stageName withError:(int)errorCode portTestFlags:(int)portTestFlags {
     Log(LOG_I, @"Stage %s failed: %d", stageName, errorCode);
     [self recordDiagnosticError:@"stage_failed"];
+    [_streamMan setDiagnosticState:@"failed"];
 
     if ([self usesReconnectProfile] && _reconnectState.state == LMStreamStateReconnecting && !_stoppingStream) {
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -719,6 +728,7 @@
 - (void) launchFailed:(NSString*)message {
     Log(LOG_I, @"Launch failed: %@", message);
     [self recordDiagnosticError:@"launch_failed"];
+    [_streamMan setDiagnosticState:@"failed"];
 
     [self cleanupStreamInputOnMainThread];
 

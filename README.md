@@ -35,6 +35,8 @@ An iOS device build requires macOS and Xcode, even when signing and provisioning
 
 The second-monitor path targets an existing virtual display selected by host/profile identity. Its conservative starting profile is H.264 at `1280x720 @ 30 FPS`; `1920x1080 @ 30 FPS` is an explicit experiment, not a claimed iPad Air 1 baseline. The stable iPad Air 1 mode is `NOT MEASURED` until a physical-device run records it.
 
+The local diagnostic record follows the shared schema in the validation matrix. Moonlight's RTT, dropped-frame, and reconnect values are client-side metrics, not host metrics. Host display ID, mapped output, capture backend, and encoder remain nullable and render as `unavailable` unless an authenticated Sunshine status source supplies them. Sunshine host `rtt_ms`, `dropped_frames`, and `reconnect_count` are currently nullable because the host status path does not collect those metrics.
+
 Use the validation matrix in `docs/superpowers/validation/second-monitor-test-matrix.md`. It distinguishes simulator checks from iPad Air 1 checks and records unavailable work as `BLOCKED/NOT RUN`. The simulator cannot validate VDD hotplug, Wi-Fi recovery, or physical touch behavior.
 
 Available macOS commands are:

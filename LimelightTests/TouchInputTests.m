@@ -510,24 +510,25 @@
 
 - (void)testSecondMonitorDiagnosticsFormatterIncludesBoundedRecordWithoutSecrets {
     LMStreamDiagnostics *diagnostics = [[LMStreamDiagnostics alloc] init];
-    diagnostics.hostDisplayID = @"{vdd-guid}";
-    diagnostics.mappedOutput = @"\\\\.\\DISPLAY2";
-    diagnostics.captureBackend = @"ddx";
-    diagnostics.encoder = @"h264_nvenc";
+    diagnostics.state = @"streaming";
+    diagnostics.hostDisplayID = nil;
+    diagnostics.mappedOutput = nil;
+    diagnostics.captureBackend = nil;
+    diagnostics.encoder = nil;
     diagnostics.codec = @"H.264";
-    diagnostics.width = 1280;
-    diagnostics.height = 720;
-    diagnostics.fps = 30;
-    diagnostics.bitrateKbps = 5000;
-    diagnostics.rttMs = 22;
-    diagnostics.droppedFrames = 3;
-    diagnostics.reconnectCount = 1;
+    diagnostics.resolution = @"1280x720";
+    diagnostics.fps = @30;
+    diagnostics.bitrateKbps = @5000;
+    diagnostics.rttMs = @22;
+    diagnostics.droppedFrames = @3;
+    diagnostics.reconnectCount = @1;
     diagnostics.lastError = @"whoami --password=not-a-diagnostic-value";
 
     NSString *formatted = LMFormatSecondMonitorDiagnostics(diagnostics);
 
-    XCTAssertTrue([formatted containsString:@"Host display: {vdd-guid}"]);
-    XCTAssertTrue([formatted containsString:@"Mapped output: \\\\.\\DISPLAY2"]);
+    XCTAssertTrue([formatted containsString:@"State: streaming"]);
+    XCTAssertTrue([formatted containsString:@"Host display: unavailable"]);
+    XCTAssertTrue([formatted containsString:@"Mapped output: unavailable"]);
     XCTAssertTrue([formatted containsString:@"Resolution: 1280x720"]);
     XCTAssertTrue([formatted containsString:@"Bitrate: 5000 kbps"]);
     XCTAssertTrue([formatted containsString:@"RTT: 22 ms"]);
@@ -536,7 +537,42 @@
     XCTAssertTrue([formatted containsString:@"Last error: redacted"]);
     XCTAssertFalse([formatted containsString:@"not-a-diagnostic-value"]);
     XCTAssertFalse([formatted containsString:@"whoami"]);
-    XCTAssertLessThan(formatted.length, 2048U);
+    XCTAssertLessThanOrEqual(formatted.length, LMSecondMonitorDiagnosticOverlayMaximumLength);
+}
+
+- (void)testSecondMonitorDiagnosticsBoundsEveryStringAndTheWholeOverlay {
+    NSString *adversarialValue = [@"whoami\r\n" stringByPaddingToLength:4096 withString:@"&password=secret" startingAtIndex:0];
+    LMStreamDiagnostics *diagnostics = [[LMStreamDiagnostics alloc] init];
+    diagnostics.state = adversarialValue;
+    diagnostics.hostDisplayID = adversarialValue;
+    diagnostics.mappedOutput = adversarialValue;
+    diagnostics.captureBackend = adversarialValue;
+    diagnostics.encoder = adversarialValue;
+    diagnostics.codec = adversarialValue;
+    diagnostics.resolution = adversarialValue;
+    diagnostics.fps = @30;
+    diagnostics.bitrateKbps = @5000;
+    diagnostics.rttMs = @22;
+    diagnostics.droppedFrames = @3;
+    diagnostics.reconnectCount = @1;
+    diagnostics.lastError = adversarialValue;
+
+    NSString *formatted = LMFormatSecondMonitorDiagnostics(diagnostics);
+
+    XCTAssertLessThanOrEqual(formatted.length, LMSecondMonitorDiagnosticOverlayMaximumLength);
+    XCTAssertFalse([formatted containsString:@"whoami"]);
+    XCTAssertFalse([formatted containsString:@"password=secret"]);
+    XCTAssertFalse([formatted containsString:@"\r"]);
+    XCTAssertTrue([formatted containsString:@"State: redacted"]);
+    XCTAssertTrue([formatted containsString:@"Host display: redacted"]);
+}
+
+- (void)testLegacyGameModeOverlayFormatRemainsDistinctFromSecondMonitorDiagnostics {
+    NSString *legacy = LMFormatLegacyStatsOverlay(1280, 720, 30.0, @"H.264", 1.5, @"22 ms", @"");
+
+    XCTAssertTrue([legacy containsString:@"Video stream: 1280x720 30.00 FPS"]);
+    XCTAssertTrue([legacy containsString:@"Frames dropped by your network connection: 1.50%"]);
+    XCTAssertFalse([legacy containsString:@"Host display:"]);
 }
 
 - (void)testSecondMonitorSettingsFactoryReturnsVisibleNavigationContainer {
