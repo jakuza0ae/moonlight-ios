@@ -4,6 +4,7 @@
 #import "RelativeTouchHandler.h"
 #import "StreamConfiguration.h"
 #import "Connection.h"
+#import "StreamFrameViewController.h"
 
 @interface TouchInputTests : XCTestCase
 @end
@@ -383,6 +384,34 @@
 
     XCTAssertEqual(state.state, LMStreamStateFailed);
     XCTAssertEqual(state.retryCount, LMReconnectRetryBudget);
+}
+
+- (void)testReconnectStageFailureConsumesAnotherRetryBeforeFinalFailure {
+    LMReconnectStateMachine *state = [[LMReconnectStateMachine alloc] initWithHost:@"host-uuid"
+                                                                              profile:[LMStreamProfile defaultSecondMonitorProfile]];
+
+    XCTAssertTrue([state beginReconnect]);
+    XCTAssertTrue([state beginReconnect]);
+    XCTAssertEqual(state.state, LMStreamStateReconnecting);
+    XCTAssertEqual(state.retryCount, 2);
+    XCTAssertTrue([state beginReconnect]);
+    XCTAssertFalse([state beginReconnect]);
+    XCTAssertEqual(state.state, LMStreamStateFailed);
+}
+
+- (void)testStatsTimerResetInvalidatesAndClearsExistingTimer {
+    StreamFrameViewController *viewController = [[StreamFrameViewController alloc] init];
+    NSTimer *timer = [NSTimer timerWithTimeInterval:1.0
+                                              target:viewController
+                                            selector:@selector(updateStatsOverlay)
+                                            userInfo:nil
+                                             repeats:YES];
+    [viewController setValue:timer forKey:@"statsUpdateTimer"];
+
+    [viewController performSelector:@selector(invalidateStatsUpdateTimer)];
+
+    XCTAssertNil([viewController valueForKey:@"statsUpdateTimer"]);
+    XCTAssertFalse(timer.isValid);
 }
 
 @end

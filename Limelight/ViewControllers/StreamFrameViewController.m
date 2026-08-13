@@ -58,10 +58,22 @@
 #endif
 }
 
+- (void)invalidateStatsUpdateTimer {
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self invalidateStatsUpdateTimer];
+        });
+        return;
+    }
+    [_statsUpdateTimer invalidate];
+    _statsUpdateTimer = nil;
+}
+
 - (void)stopStream {
     _stoppingStream = YES;
     [_reconnectTimer invalidate];
     _reconnectTimer = nil;
+    [self invalidateStatsUpdateTimer];
     [_reconnectState stop];
     [_streamView cancelAllTouches];
     [_streamMan stopStream];
@@ -129,6 +141,7 @@
 
 - (void)beginReconnect {
     [_streamView cancelAllTouches];
+    [self invalidateStatsUpdateTimer];
 
     if (![_reconnectState beginReconnect]) {
         [self showReconnectFailure:@"The connection could not be restored after several attempts."];
@@ -417,9 +430,7 @@
 - (void) returnToMainFrame {
     // Reset display mode back to default
     [self updatePreferredDisplayMode:NO];
-    
-    [_statsUpdateTimer invalidate];
-    _statsUpdateTimer = nil;
+    [self invalidateStatsUpdateTimer];
     
     [self.navigationController popToRootViewControllerAnimated:YES];
 }
@@ -483,6 +494,7 @@
         [self->_reconnectState connectionStarted];
         [self->_reconnectTimer invalidate];
         self->_reconnectTimer = nil;
+        [self invalidateStatsUpdateTimer];
         // Leave the spinner spinning until it's obscured by
         // the first frame of video.
         self->_stageLabel.hidden = YES;
@@ -608,6 +620,13 @@
 
 - (void) stageFailed:(const char*)stageName withError:(int)errorCode portTestFlags:(int)portTestFlags {
     Log(LOG_I, @"Stage %s failed: %d", stageName, errorCode);
+
+    if ([self usesReconnectProfile] && _reconnectState.state == LMStreamStateReconnecting && !_stoppingStream) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self beginReconnect];
+        });
+        return;
+    }
     
     unsigned int portTestResults = LiTestClientConnectivity(CONN_TEST_SERVER, 443, portTestFlags);
 
