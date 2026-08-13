@@ -31,6 +31,8 @@
 - `Limelight/Input/AbsoluteTouchHandler.h`: exposes runtime input-mode changes needed by the toolbar selector.
 - `Limelight/Input/AbsoluteTouchHandler.m`: changes the mode used by subsequent touch events after toolbar selection.
 - `Limelight/Input/OnScreenControls.m`: treats second-monitor profiles as permanently off for gamepad overlay drawing and touch interception.
+- `Limelight/Stream/StreamConfiguration.h`: exposes the pure explicit-profile activation guard used by the launch path and tests.
+- `Limelight/Stream/StreamConfiguration.m`: implements the explicit-profile activation guard without changing profile validation.
 - `Limelight/ViewControllers/StreamFrameViewController.m`: uses constraints for second-monitor stream bounds, handles toolbar reconnect/diagnostics callbacks, forces landscape-first orientation, and cleans keyboard actions on disconnect.
 - `Limelight/ViewControllers/SettingsViewController.m`: adds a programmatic second-monitor profile entry point and panel, loads Task 6 defaults/profile values, filters capabilities, and saves the explicit active-mode choice.
 - `Limelight/ViewControllers/MainFrameViewController.m`: applies the stored second-monitor profile only when the user selected desktop mode; otherwise preserves the existing game configuration path.
@@ -90,6 +92,8 @@ The existing `UserInteractionDelegate` gains optional desktop callbacks:
 - Modify: `LimelightTests/TouchInputTests.m`
 - Modify: `Limelight/Input/KeyboardInputField.h`
 - Modify: `Limelight/Input/StreamView.h`
+- Modify: `Limelight/Stream/StreamConfiguration.h`
+- Modify: `Limelight/Stream/StreamConfiguration.m`
 
 **Interfaces:**
 - Tests use `LMKeyboardAction`, `activeKeyboardActions`, `sendKeyboardAction:pressed:`, and `releaseAllKeyboardActions`.
