@@ -6,13 +6,19 @@
 //  Copyright © 2020 Moonlight Game Streaming Project. All rights reserved.
 //
 
-#import "StreamView.h"
+#import <UIKit/UIKit.h>
+
+@class StreamView;
+
+FOUNDATION_EXPORT CGPoint LMScrollDeltaForTouchMovement(CGPoint previousCenter,
+                                                         CGPoint currentCenter);
 
 NS_ASSUME_NONNULL_BEGIN
 
 @interface RelativeTouchHandler : UIResponder
 
--(id)initWithView:(StreamView*)view;
+- (instancetype)initWithView:(StreamView *)view;
+- (void)cancelAllTouches;
 
 @end
 

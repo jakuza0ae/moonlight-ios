@@ -8,6 +8,12 @@
 
 #import "Settings+CoreDataClass.h"
 
+typedef NS_ENUM(NSInteger, LMInputMode) {
+    LMInputModeNativeTouch = 0,
+    LMInputModeMouseCompatibility,
+    LMInputModeHybrid,
+};
+
 @interface TemporarySettings : NSObject
 
 @property (nonatomic, retain) Settings * parent;
@@ -33,6 +39,7 @@
 @property (nonatomic) BOOL enableHdr;
 @property (nonatomic) BOOL btMouseSupport;
 @property (nonatomic) BOOL absoluteTouchMode;
+@property (nonatomic) LMInputMode inputMode;
 @property (nonatomic) BOOL statsOverlay;
 
 - (id) initFromSettings:(Settings*)settings;

@@ -29,9 +29,12 @@
                   config:(StreamConfiguration*)streamConfig;
 - (void) showOnScreenControls;
 - (OnScreenControlsLevel) getCurrentOscState;
+- (void) cancelAllTouches;
 
 #if !TARGET_OS_TV
 - (void) updateCursorLocation:(CGPoint)location isMouse:(BOOL)isMouse;
+- (CGRect) displayedVideoRect;
+- (CGPoint) normalizedPointForTouch:(CGPoint)point;
 #endif
 
 @end

@@ -9,5 +9,13 @@
 #import "StreamConfiguration.h"
 
 @implementation StreamConfiguration
-@synthesize host, httpsPort, appID, width, height, frameRate, bitRate, riKeyId, riKey, gamepadMask, appName, optimizeGameSettings, playAudioOnPC, swapABXYButtons, audioConfiguration, supportedVideoFormats, multiController, serverCert, rtspSessionUrl, serverCodecModeSupport;
+@synthesize host, httpsPort, appID, width, height, frameRate, bitRate, riKeyId, riKey, gamepadMask, appName, optimizeGameSettings, playAudioOnPC, swapABXYButtons, audioConfiguration, supportedVideoFormats, multiController, serverCert, rtspSessionUrl, serverCodecModeSupport, inputMode;
+
+- (instancetype)init {
+    self = [super init];
+    if (self != nil) {
+        _inputMode = LMInputModeNativeTouch;
+    }
+    return self;
+}
 @end

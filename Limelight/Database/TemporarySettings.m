@@ -45,6 +45,7 @@
     self.swapABXYButtons = [[NSUserDefaults standardUserDefaults] boolForKey:@"swapABXYButtons"];
     self.btMouseSupport = [[NSUserDefaults standardUserDefaults] boolForKey:@"btMouseSupport"];
     self.statsOverlay = [[NSUserDefaults standardUserDefaults] boolForKey:@"statsOverlay"];
+    self.inputMode = LMInputModeMouseCompatibility;
     
     NSInteger _screenSize = [[NSUserDefaults standardUserDefaults] integerForKey:@"streamResolution"];
     switch (_screenSize) {
@@ -84,6 +85,7 @@
     self.onscreenControls = settings.onscreenControls;
     self.btMouseSupport = settings.btMouseSupport;
     self.absoluteTouchMode = settings.absoluteTouchMode;
+    self.inputMode = LMInputModeNativeTouch;
     self.statsOverlay = settings.statsOverlay;
 #endif
     self.uniqueId = settings.uniqueId;

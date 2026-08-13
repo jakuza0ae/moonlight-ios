@@ -6,6 +6,8 @@
 //  Copyright (c) 2014 Moonlight Stream. All rights reserved.
 //
 
+#import "../Database/TemporarySettings.h"
+
 @interface StreamConfiguration : NSObject
 
 @property NSString* host;
@@ -31,5 +33,6 @@
 @property BOOL multiController;
 @property BOOL useFramePacing;
 @property NSData* serverCert;
+@property LMInputMode inputMode;
 
 @end

@@ -66,18 +66,24 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     // tvOS requires RelativeTouchHandler to manage Apple Remote input
     self->touchHandler = [[RelativeTouchHandler alloc] initWithView:self];
 #else
-    // iOS uses RelativeTouchHandler or AbsoluteTouchHandler depending on user preference
-    if (settings.absoluteTouchMode) {
-        self->touchHandler = [[AbsoluteTouchHandler alloc] initWithView:self];
+    // Keep the legacy game gestures behind the compatibility mode. Desktop profiles
+    // use native touch or hybrid mode explicitly through StreamConfiguration.
+    if (streamConfig.inputMode == LMInputModeMouseCompatibility) {
+        if (settings.absoluteTouchMode) {
+            self->touchHandler = [[AbsoluteTouchHandler alloc] initWithView:self inputMode:LMInputModeMouseCompatibility];
+        }
+        else {
+            self->touchHandler = [[RelativeTouchHandler alloc] initWithView:self];
+        }
     }
     else {
-        self->touchHandler = [[RelativeTouchHandler alloc] initWithView:self];
+        self->touchHandler = [[AbsoluteTouchHandler alloc] initWithView:self inputMode:streamConfig.inputMode];
     }
     
     onScreenControls = [[OnScreenControls alloc] initWithView:self controllerSup:controllerSupport streamConfig:streamConfig];
     OnScreenControlsLevel level = (OnScreenControlsLevel)[settings.onscreenControls integerValue];
-    if (settings.absoluteTouchMode) {
-        Log(LOG_I, @"On-screen controls disabled in absolute touch mode");
+    if (streamConfig.inputMode != LMInputModeMouseCompatibility) {
+        Log(LOG_I, @"On-screen controls disabled in native touch mode");
         [onScreenControls setLevel:OnScreenControlsLevelOff];
     }
     else if (level == OnScreenControlsLevelAuto) {
@@ -167,6 +173,19 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
 #endif
 }
 
+- (void) cancelAllTouches {
+    if ([touchHandler respondsToSelector:@selector(cancelAllTouches)]) {
+        [touchHandler cancelAllTouches];
+    }
+}
+
+- (void)didMoveToWindow {
+    [super didMoveToWindow];
+    if (self.window == nil) {
+        [self cancelAllTouches];
+    }
+}
+
 - (OnScreenControlsLevel) getCurrentOscState {
     if (onScreenControls == nil) {
         return OnScreenControlsLevelOff;
@@ -184,39 +203,23 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     }
 }
 
-- (CGPoint) adjustCoordinatesForVideoArea:(CGPoint)point {
-    // These are now relative to the StreamView, however we need to scale them
-    // further to make them relative to the actual video portion.
-    float x = point.x - self.bounds.origin.x;
-    float y = point.y - self.bounds.origin.y;
-    
-    // For some reason, we don't seem to always get to the bounds of the window
-    // so we'll subtract 1 pixel if we're to the left/below of the origin and
-    // and add 1 pixel if we're to the right/above. It should be imperceptible
-    // to the user but it will allow activation of gestures that require contact
-    // with the edge of the screen (like Aero Snap).
-    if (x < self.bounds.size.width / 2) {
-        x--;
-    }
-    else {
-        x++;
-    }
-    if (y < self.bounds.size.height / 2) {
-        y--;
-    }
-    else {
-        y++;
-    }
-    
-    // This logic mimics what iOS does with AVLayerVideoGravityResizeAspect
+- (CGRect) displayedVideoRect {
     CGSize videoSize = [self getVideoAreaSize];
-    CGPoint videoOrigin = CGPointMake(self.bounds.size.width / 2 - videoSize.width / 2,
-                                      self.bounds.size.height / 2 - videoSize.height / 2);
-    
-    // Confine the cursor to the video region. We don't just discard events outside
-    // the region because we won't always get one exactly when the mouse leaves the region.
-    return CGPointMake(MIN(MAX(x, videoOrigin.x), videoOrigin.x + videoSize.width) - videoOrigin.x,
-                       MIN(MAX(y, videoOrigin.y), videoOrigin.y + videoSize.height) - videoOrigin.y);
+    return CGRectMake(CGRectGetMidX(self.bounds) - videoSize.width / 2.0,
+                      CGRectGetMidY(self.bounds) - videoSize.height / 2.0,
+                      videoSize.width,
+                      videoSize.height);
+}
+
+- (CGPoint) normalizedPointForTouch:(CGPoint)point {
+    return LMNormalizedPointForTouch(point, self.bounds, [self displayedVideoRect]);
+}
+
+- (CGPoint) adjustCoordinatesForVideoArea:(CGPoint)point {
+    CGRect displayedVideoRect = [self displayedVideoRect];
+    CGPoint normalizedPoint = [self normalizedPointForTouch:point];
+    return CGPointMake(normalizedPoint.x * CGRectGetWidth(displayedVideoRect),
+                       normalizedPoint.y * CGRectGetHeight(displayedVideoRect));
 }
 
 #if !TARGET_OS_TV
@@ -633,7 +636,7 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
 #if !TARGET_OS_TV
 - (void) updateCursorLocation:(CGPoint)location isMouse:(BOOL)isMouse {
     CGPoint normalizedLocation = [self adjustCoordinatesForVideoArea:location];
-    CGSize videoSize = [self getVideoAreaSize];
+    CGRect displayedVideoRect = [self displayedVideoRect];
     
     // Send the mouse position relative to the video region if it has changed
     // if we're receiving coordinates from a real mouse.
@@ -644,7 +647,8 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     // mouse motion when using a Citrix X1 mouse.
     if (normalizedLocation.x != lastMouseX || normalizedLocation.y != lastMouseY || !isMouse) {
         if (lastMouseX != 0 || lastMouseY != 0 || !isMouse) {
-            LiSendMousePositionEvent(normalizedLocation.x, normalizedLocation.y, videoSize.width, videoSize.height);
+            LiSendMousePositionEvent(normalizedLocation.x, normalizedLocation.y,
+                                     displayedVideoRect.size.width, displayedVideoRect.size.height);
         }
         
         if (isMouse) {
@@ -665,15 +669,7 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     }
     
     // This logic mimics what iOS does with AVLayerVideoGravityResizeAspect
-    CGSize videoSize;
-    CGPoint videoOrigin;
-    if (self.bounds.size.width > self.bounds.size.height * streamAspectRatio) {
-        videoSize = CGSizeMake(self.bounds.size.height * streamAspectRatio, self.bounds.size.height);
-    } else {
-        videoSize = CGSizeMake(self.bounds.size.width, self.bounds.size.width / streamAspectRatio);
-    }
-    videoOrigin = CGPointMake(self.bounds.size.width / 2 - videoSize.width / 2,
-                              self.bounds.size.height / 2 - videoSize.height / 2);
+    CGRect displayedVideoRect = [self displayedVideoRect];
     
     // Move the cursor on the host if no buttons are pressed.
     // Motion with buttons pressed in handled in touchesMoved:
@@ -682,7 +678,7 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     }
     
     // The pointer interaction should cover the video region only
-    return [UIPointerRegion regionWithRect:CGRectMake(videoOrigin.x, videoOrigin.y, videoSize.width, videoSize.height) identifier:nil];
+    return [UIPointerRegion regionWithRect:displayedVideoRect identifier:nil];
 }
 
 - (UIPointerStyle *)pointerInteraction:(UIPointerInteraction *)interaction styleForRegion:(UIPointerRegion *)region  API_AVAILABLE(ios(13.4)) {
@@ -900,6 +896,10 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     }
     
     return commands;
+}
+
+- (void)dealloc {
+    [self cancelAllTouches];
 }
 
 - (void)connectedStateDidChangeWithIdentifier:(NSUUID * _Nonnull)identifier isConnected:(BOOL)isConnected {

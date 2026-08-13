@@ -13,6 +13,11 @@
 static const int REFERENCE_WIDTH = 1280;
 static const int REFERENCE_HEIGHT = 720;
 
+CGPoint LMScrollDeltaForTouchMovement(CGPoint previousCenter, CGPoint currentCenter) {
+    return CGPointMake(currentCenter.x - previousCenter.x,
+                       currentCenter.y - previousCenter.y);
+}
+
 @implementation RelativeTouchHandler {
     CGPoint touchLocation, originalLocation;
     BOOL touchMoved;
@@ -107,8 +112,9 @@ static const int REFERENCE_HEIGHT = 720;
         CGPoint secondLocation = [[[[event allTouches] allObjects] objectAtIndex:1] locationInView:view];
         
         CGPoint avgLocation = CGPointMake((firstLocation.x + secondLocation.x) / 2, (firstLocation.y + secondLocation.y) / 2);
-        if (touchLocation.y != avgLocation.y) {
-            LiSendHighResScrollEvent((avgLocation.y - touchLocation.y) * 10);
+        CGPoint scrollDelta = LMScrollDeltaForTouchMovement(touchLocation, avgLocation);
+        if (scrollDelta.y != 0.0f) {
+            LiSendHighResScrollEvent(scrollDelta.y * 10);
         }
 
         // If we've moved far enough to confirm this wasn't just human/machine error,
@@ -171,13 +177,22 @@ static const int REFERENCE_HEIGHT = 720;
 }
 
 - (void)touchesCancelled:(NSSet *)touches withEvent:(UIEvent *)event {
+    [self cancelAllTouches];
+}
+
+- (void)cancelAllTouches {
     [dragTimer invalidate];
     dragTimer = nil;
     if (isDragging) {
         isDragging = false;
         LiSendMouseButtonEvent(BUTTON_ACTION_RELEASE, BUTTON_LEFT);
     }
+    touchMoved = false;
     peakTouchCount = 0;
+}
+
+- (void)dealloc {
+    [self cancelAllTouches];
 }
 
 #if TARGET_OS_TV
