@@ -7,8 +7,8 @@
 //
 
 #import "AbsoluteTouchHandler.h"
-#import "StreamView.h"
 #import "RelativeTouchHandler.h"
+#import "StreamView.h"
 
 #include <Limelight.h>
 #include <math.h>
@@ -39,11 +39,82 @@ CGPoint LMNormalizedPointForTouch(CGPoint point, CGRect videoBounds, CGRect disp
                        MIN(MAX(normalizedY, 0.0), 1.0));
 }
 
+LMInputRoute LMInputRouteForMode(LMInputMode inputMode,
+                                 NSUInteger activeTouchCount,
+                                 BOOL nativeTouchAvailable) {
+    if (!nativeTouchAvailable || activeTouchCount == 0 || inputMode == LMInputModeMouseCompatibility) {
+        return LMInputRouteMouseCompatibility;
+    }
+    if (inputMode == LMInputModeHybrid && activeTouchCount != 1) {
+        return LMInputRouteMouseCompatibility;
+    }
+    return LMInputRouteNativeTouch;
+}
+
+BOOL LMShouldStartLongPressForTouchCount(NSUInteger activeTouchCount) {
+    return activeTouchCount == 1;
+}
+
+BOOL LMShouldCancelLongPressForTouchCount(NSUInteger activeTouchCount) {
+    return activeTouchCount != 1;
+}
+
+BOOL LMShouldSendTwoFingerScrollForTouchCount(NSUInteger activeTouchCount) {
+    return activeTouchCount == 2;
+}
+
+@implementation LMActiveTouchPointerMap {
+    NSMapTable *pointerIds;
+    uint32_t nextPointerId;
+}
+
+- (instancetype)init {
+    self = [super init];
+    if (self != nil) {
+        pointerIds = [[NSMapTable alloc] initWithKeyOptions:NSPointerFunctionsStrongMemory | NSPointerFunctionsObjectPointerPersonality
+                                               valueOptions:NSPointerFunctionsStrongMemory
+                                                   capacity:0];
+        nextPointerId = 1;
+    }
+    return self;
+}
+
+- (uint32_t)pointerIdForTouch:(id)touch create:(BOOL)create {
+    NSNumber *pointerId = [pointerIds objectForKey:touch];
+    if (pointerId != nil || !create) {
+        return pointerId.unsignedIntValue;
+    }
+
+    if (nextPointerId == 0) {
+        nextPointerId = 1;
+    }
+    pointerId = @(nextPointerId++);
+    [pointerIds setObject:pointerId forKey:touch];
+    return pointerId.unsignedIntValue;
+}
+
+- (void)releaseTouch:(id)touch {
+    [pointerIds removeObjectForKey:touch];
+}
+
+- (NSArray<NSNumber *> *)activePointerIds {
+    NSMutableArray<NSNumber *> *activeIds = [[NSMutableArray alloc] init];
+    for (NSNumber *pointerId in pointerIds.objectEnumerator) {
+        [activeIds addObject:pointerId];
+    }
+    return activeIds;
+}
+
+- (void)cancelAllTouches {
+    [pointerIds removeAllObjects];
+}
+
+@end
+
 @implementation AbsoluteTouchHandler {
     StreamView *view;
     LMInputMode inputMode;
-    NSMutableDictionary<UITouch *, NSNumber *> *pointerIds;
-    uint32_t nextPointerId;
+    LMActiveTouchPointerMap *pointerMap;
     BOOL nativeTouchUnavailable;
 
     NSTimer *longPressTimer;
@@ -55,6 +126,9 @@ CGPoint LMNormalizedPointForTouch(CGPoint point, CGRect videoBounds, CGRect disp
     BOOL compatibilityRightButtonDown;
     CGPoint scrollCenter;
     BOOL hasScrollCenter;
+    NSUInteger compatibilityPeakTouchCount;
+    BOOL compatibilityGestureMoved;
+    BOOL hybridMouseGesture;
 }
 
 - (instancetype)initWithView:(StreamView *)view {
@@ -66,8 +140,7 @@ CGPoint LMNormalizedPointForTouch(CGPoint point, CGRect videoBounds, CGRect disp
     if (self != nil) {
         self->view = view;
         self->inputMode = mode;
-        self->pointerIds = [[NSMutableDictionary alloc] init];
-        self->nextPointerId = 1;
+        self->pointerMap = [[LMActiveTouchPointerMap alloc] init];
     }
     return self;
 }
@@ -77,18 +150,16 @@ CGPoint LMNormalizedPointForTouch(CGPoint point, CGRect videoBounds, CGRect disp
     longPressTimer = nil;
 }
 
-- (NSNumber *)pointerIdForTouch:(UITouch *)touch create:(BOOL)create {
-    NSNumber *pointerId = pointerIds[touch];
-    if (pointerId != nil || !create) {
-        return pointerId;
-    }
+- (NSUInteger)activeTouchCountForEvent:(UIEvent *)event {
+    return event.allTouches.count;
+}
 
-    if (nextPointerId == 0) {
-        nextPointerId = 1;
+- (void)cancelNativePointers {
+    if (pointerMap.activePointerIds.count > 0) {
+        LiSendTouchEvent(LI_TOUCH_EVENT_CANCEL_ALL, 0, 0.0f, 0.0f, 0.0f,
+                         0.0f, 0.0f, LI_ROT_UNKNOWN);
+        [pointerMap cancelAllTouches];
     }
-    pointerId = @(nextPointerId++);
-    pointerIds[touch] = pointerId;
-    return pointerId;
 }
 
 - (float)pressureForTouch:(UITouch *)touch {
@@ -110,67 +181,73 @@ CGPoint LMNormalizedPointForTouch(CGPoint point, CGRect videoBounds, CGRect disp
         return NO;
     }
 
-    NSNumber *pointerId = [self pointerIdForTouch:touch create:eventType == LI_TOUCH_EVENT_DOWN];
-    if (pointerId == nil) {
+    uint32_t pointerId = [pointerMap pointerIdForTouch:touch
+                                                create:eventType == LI_TOUCH_EVENT_DOWN];
+    if (pointerId == 0) {
         return YES;
     }
 
     if (eventType == LI_TOUCH_EVENT_CANCEL) {
-        LiSendTouchEvent(eventType, pointerId.unsignedIntValue, 0.0f, 0.0f, 0.0f,
+        LiSendTouchEvent(eventType, pointerId, 0.0f, 0.0f, 0.0f,
                          0.0f, 0.0f, LI_ROT_UNKNOWN);
-        [pointerIds removeObjectForKey:touch];
+        [pointerMap releaseTouch:touch];
         return YES;
     }
 
     CGRect displayedVideoRect = [view displayedVideoRect];
     CGPoint normalizedPoint = [view normalizedPointForTouch:[touch locationInView:view]];
-    float contactAreaMajor = [self normalizedRadius:touch.majorRadius
-                                              onAxis:CGRectGetWidth(displayedVideoRect)];
-    float contactAreaMinor = [self normalizedRadius:touch.minorRadius
-                                              onAxis:CGRectGetHeight(displayedVideoRect)];
-    if (contactAreaMinor == 0.0f) {
-        contactAreaMinor = contactAreaMajor;
-    }
+    float contactArea = [self normalizedRadius:touch.majorRadius
+                                         onAxis:CGRectGetWidth(displayedVideoRect)];
 
     int result = LiSendTouchEvent(eventType,
-                                  pointerId.unsignedIntValue,
+                                  pointerId,
                                   normalizedPoint.x,
                                   normalizedPoint.y,
                                   [self pressureForTouch:touch],
-                                  contactAreaMajor,
-                                  contactAreaMinor,
+                                  contactArea,
+                                  contactArea,
                                   LI_ROT_UNKNOWN);
     if (result == LI_ERR_UNSUPPORTED) {
+        // The host may have accepted earlier contacts, so cancel before dropping IDs.
+        [self cancelNativePointers];
         nativeTouchUnavailable = YES;
-        [pointerIds removeAllObjects];
         return NO;
     }
 
     if (eventType == LI_TOUCH_EVENT_UP) {
-        [pointerIds removeObjectForKey:touch];
+        [pointerMap releaseTouch:touch];
     }
     return YES;
 }
 
-- (void)onLongPressStart:(NSTimer *)timer {
-    if (inputMode == LMInputModeMouseCompatibility || nativeTouchUnavailable) {
+- (void)releaseCompatibilityButtons {
+    [self invalidateLongPressTimer];
+    if (compatibilityLeftButtonDown) {
         LiSendMouseButtonEvent(BUTTON_ACTION_RELEASE, BUTTON_LEFT);
         compatibilityLeftButtonDown = NO;
-        LiSendMouseButtonEvent(BUTTON_ACTION_PRESS, BUTTON_RIGHT);
-        compatibilityRightButtonDown = YES;
     }
-    else if (!nativeTouchUnavailable) {
-        LiSendMouseButtonEvent(BUTTON_ACTION_PRESS, BUTTON_RIGHT);
-        compatibilityRightButtonDown = YES;
+    if (compatibilityRightButtonDown) {
+        LiSendMouseButtonEvent(BUTTON_ACTION_RELEASE, BUTTON_RIGHT);
+        compatibilityRightButtonDown = NO;
     }
 }
 
-- (BOOL)usesCompatibilityFallback {
-    return inputMode == LMInputModeMouseCompatibility || nativeTouchUnavailable;
+- (void)onLongPressStart:(NSTimer *)timer {
+    if (lastTouchDown == nil || !LMShouldStartLongPressForTouchCount(pointerMap.activePointerIds.count + (compatibilityLeftButtonDown ? 1 : 0))) {
+        return;
+    }
+
+    [self invalidateLongPressTimer];
+    [view updateCursorLocation:[lastTouchDown locationInView:view] isMouse:NO];
+    if (inputMode == LMInputModeMouseCompatibility || nativeTouchUnavailable) {
+        [self releaseCompatibilityButtons];
+    }
+    LiSendMouseButtonEvent(BUTTON_ACTION_PRESS, BUTTON_RIGHT);
+    compatibilityRightButtonDown = YES;
 }
 
 - (CGPoint)centerForEvent:(UIEvent *)event {
-    NSArray<UITouch *> *activeTouches = [[event allTouches] allObjects];
+    NSArray<UITouch *> *activeTouches = event.allTouches.allObjects;
     if (activeTouches.count < 2) {
         return CGPointZero;
     }
@@ -180,8 +257,22 @@ CGPoint LMNormalizedPointForTouch(CGPoint point, CGRect videoBounds, CGRect disp
                        (first.y + second.y) / 2.0);
 }
 
-- (void)sendTwoFingerScrollForEvent:(UIEvent *)event {
-    if ([[event allTouches] count] < 2) {
+- (void)beginCompatibilityGestureForEvent:(UIEvent *)event {
+    NSUInteger activeTouchCount = [self activeTouchCountForEvent:event];
+    compatibilityPeakTouchCount = activeTouchCount;
+    compatibilityGestureMoved = NO;
+    if (LMShouldSendTwoFingerScrollForTouchCount(activeTouchCount)) {
+        scrollCenter = [self centerForEvent:event];
+        hasScrollCenter = YES;
+    }
+    else {
+        hasScrollCenter = NO;
+    }
+}
+
+- (void)moveCompatibilityGestureForEvent:(UIEvent *)event {
+    NSUInteger activeTouchCount = [self activeTouchCountForEvent:event];
+    if (!LMShouldSendTwoFingerScrollForTouchCount(activeTouchCount)) {
         hasScrollCenter = NO;
         return;
     }
@@ -191,18 +282,30 @@ CGPoint LMNormalizedPointForTouch(CGPoint point, CGRect videoBounds, CGRect disp
         CGPoint delta = LMScrollDeltaForTouchMovement(scrollCenter, currentCenter);
         if (delta.y != 0.0f) {
             LiSendHighResScrollEvent(delta.y * 10.0f);
+            compatibilityGestureMoved = YES;
         }
     }
     scrollCenter = currentCenter;
     hasScrollCenter = YES;
 }
 
+- (void)endCompatibilityGesture {
+    if (compatibilityPeakTouchCount == 2 && !compatibilityGestureMoved) {
+        LiSendMouseButtonEvent(BUTTON_ACTION_PRESS, BUTTON_RIGHT);
+        LiSendMouseButtonEvent(BUTTON_ACTION_RELEASE, BUTTON_RIGHT);
+    }
+    compatibilityPeakTouchCount = 0;
+    compatibilityGestureMoved = NO;
+    hasScrollCenter = NO;
+}
+
 - (void)sendCompatibilityBegan:(NSSet *)touches withEvent:(UIEvent *)event {
-    if ([[event allTouches] count] > 1) {
+    if ([self activeTouchCountForEvent:event] != 1) {
+        [self beginCompatibilityGestureForEvent:event];
         return;
     }
 
-    UITouch *touch = [touches anyObject];
+    UITouch *touch = touches.anyObject;
     CGPoint touchLocation = [touch locationInView:view];
     CGPoint currentNormalized = [view normalizedPointForTouch:touchLocation];
     CGPoint lastNormalized = [view normalizedPointForTouch:lastTouchUpLocation];
@@ -225,55 +328,73 @@ CGPoint LMNormalizedPointForTouch(CGPoint point, CGRect videoBounds, CGRect disp
 }
 
 - (void)sendCompatibilityMoved:(NSSet *)touches withEvent:(UIEvent *)event {
-    if ([[event allTouches] count] > 1) {
-        return;
-    }
-
-    UITouch *touch = [touches anyObject];
-    CGPoint touchLocation = [touch locationInView:view];
-    CGPoint currentNormalized = [view normalizedPointForTouch:touchLocation];
-    CGPoint initialNormalized = [view normalizedPointForTouch:lastTouchDownLocation];
-    if (hypotf(currentNormalized.x - initialNormalized.x,
-               currentNormalized.y - initialNormalized.y) > LONG_PRESS_ACTIVATION_DELTA) {
+    NSUInteger activeTouchCount = [self activeTouchCountForEvent:event];
+    if (LMShouldCancelLongPressForTouchCount(activeTouchCount)) {
         [self invalidateLongPressTimer];
     }
-    [view updateCursorLocation:touchLocation isMouse:NO];
+    if (activeTouchCount == 1) {
+        UITouch *touch = touches.anyObject;
+        CGPoint touchLocation = [touch locationInView:view];
+        CGPoint currentNormalized = [view normalizedPointForTouch:touchLocation];
+        CGPoint initialNormalized = [view normalizedPointForTouch:lastTouchDownLocation];
+        if (hypotf(currentNormalized.x - initialNormalized.x,
+                   currentNormalized.y - initialNormalized.y) > LONG_PRESS_ACTIVATION_DELTA) {
+            [self invalidateLongPressTimer];
+        }
+        [view updateCursorLocation:touchLocation isMouse:NO];
+    }
+    else {
+        [self moveCompatibilityGestureForEvent:event];
+    }
 }
 
 - (void)sendCompatibilityEnded:(NSSet *)touches withEvent:(UIEvent *)event {
-    if ([[event allTouches] count] != [touches count]) {
+    if (event.allTouches.count == touches.count) {
+        [self endCompatibilityGesture];
+        [self releaseCompatibilityButtons];
+        lastTouchUp = touches.anyObject;
+        lastTouchUpLocation = [lastTouchUp locationInView:view];
+        lastTouchDown = nil;
+    }
+}
+
+- (void)beginMouseRouteForTouches:(NSSet *)touches withEvent:(UIEvent *)event {
+    if (inputMode == LMInputModeMouseCompatibility && [self activeTouchCountForEvent:event] != 1) {
         return;
     }
-
-    [self invalidateLongPressTimer];
-    LiSendMouseButtonEvent(BUTTON_ACTION_RELEASE, BUTTON_LEFT);
-    LiSendMouseButtonEvent(BUTTON_ACTION_RELEASE, BUTTON_RIGHT);
-    compatibilityLeftButtonDown = NO;
-    compatibilityRightButtonDown = NO;
-    lastTouchUp = [touches anyObject];
-    lastTouchUpLocation = [lastTouchUp locationInView:view];
-    lastTouchDown = nil;
+    [self sendCompatibilityBegan:touches withEvent:event];
 }
 
 - (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event {
-    if ([self usesCompatibilityFallback]) {
-        [self sendCompatibilityBegan:touches withEvent:event];
+    NSUInteger activeTouchCount = [self activeTouchCountForEvent:event];
+    if (LMShouldCancelLongPressForTouchCount(activeTouchCount)) {
+        [self invalidateLongPressTimer];
+    }
+
+    if (inputMode == LMInputModeHybrid && activeTouchCount >= 2) {
+        [self cancelNativePointers];
+        [self releaseCompatibilityButtons];
+        hybridMouseGesture = YES;
+    }
+
+    LMInputRoute route = hybridMouseGesture
+        ? LMInputRouteMouseCompatibility
+        : LMInputRouteForMode(inputMode, activeTouchCount, !nativeTouchUnavailable);
+    if (route == LMInputRouteMouseCompatibility) {
+        [self beginMouseRouteForTouches:touches withEvent:event];
         return;
     }
 
-    [self invalidateLongPressTimer];
     for (UITouch *touch in touches) {
         if (![self sendNativeEvent:LI_TOUCH_EVENT_DOWN forTouch:touch]) {
-            [self sendCompatibilityBegan:[NSSet setWithObject:touch] withEvent:event];
+            [self beginMouseRouteForTouches:touches withEvent:event];
+            return;
         }
     }
 
-    [self sendTwoFingerScrollForEvent:event];
-
-    if (touches.count == 1 && !nativeTouchUnavailable) {
-        UITouch *touch = [touches anyObject];
-        lastTouchDown = touch;
-        lastTouchDownLocation = [touch locationInView:view];
+    if (LMShouldStartLongPressForTouchCount(activeTouchCount)) {
+        lastTouchDown = touches.anyObject;
+        lastTouchDownLocation = [lastTouchDown locationInView:view];
         longPressTimer = [NSTimer scheduledTimerWithTimeInterval:LONG_PRESS_ACTIVATION_DELAY
                                                            target:self
                                                          selector:@selector(onLongPressStart:)
@@ -283,74 +404,74 @@ CGPoint LMNormalizedPointForTouch(CGPoint point, CGRect videoBounds, CGRect disp
 }
 
 - (void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event {
-    if ([self usesCompatibilityFallback]) {
+    NSUInteger activeTouchCount = [self activeTouchCountForEvent:event];
+    if (LMShouldCancelLongPressForTouchCount(activeTouchCount)) {
+        [self invalidateLongPressTimer];
+    }
+
+    LMInputRoute route = hybridMouseGesture
+        ? LMInputRouteMouseCompatibility
+        : LMInputRouteForMode(inputMode, activeTouchCount, !nativeTouchUnavailable);
+    if (route == LMInputRouteMouseCompatibility) {
         [self sendCompatibilityMoved:touches withEvent:event];
         return;
     }
 
-    [self sendTwoFingerScrollForEvent:event];
-
-    UITouch *touch = [touches anyObject];
-    if (touch != nil && lastTouchDown != nil) {
-        CGPoint currentNormalized = [view normalizedPointForTouch:[touch locationInView:view]];
-        CGPoint initialNormalized = [view normalizedPointForTouch:lastTouchDownLocation];
-        if (hypotf(currentNormalized.x - initialNormalized.x,
-                   currentNormalized.y - initialNormalized.y) > LONG_PRESS_ACTIVATION_DELTA) {
-            [self invalidateLongPressTimer];
+    for (UITouch *touch in touches) {
+        if (![self sendNativeEvent:LI_TOUCH_EVENT_MOVE forTouch:touch]) {
+            [self beginMouseRouteForTouches:touches withEvent:event];
+            return;
         }
-    }
-    for (UITouch *changedTouch in touches) {
-        [self sendNativeEvent:LI_TOUCH_EVENT_MOVE forTouch:changedTouch];
     }
 }
 
 - (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event {
-    if ([self usesCompatibilityFallback]) {
+    NSUInteger activeTouchCount = [self activeTouchCountForEvent:event];
+    LMInputRoute route = hybridMouseGesture
+        ? LMInputRouteMouseCompatibility
+        : LMInputRouteForMode(inputMode, activeTouchCount, !nativeTouchUnavailable);
+    if (route == LMInputRouteMouseCompatibility) {
         [self sendCompatibilityEnded:touches withEvent:event];
-        return;
+    }
+    else {
+        for (UITouch *touch in touches) {
+            [self sendNativeEvent:LI_TOUCH_EVENT_UP forTouch:touch];
+        }
+        [self invalidateLongPressTimer];
+        [self releaseCompatibilityButtons];
+        if (activeTouchCount == 1) {
+            lastTouchDown = nil;
+        }
     }
 
-    for (UITouch *touch in touches) {
-        [self sendNativeEvent:LI_TOUCH_EVENT_UP forTouch:touch];
+    if (event.allTouches.count == touches.count) {
+        hybridMouseGesture = NO;
+        [self invalidateLongPressTimer];
+        lastTouchDown = nil;
     }
-    [self invalidateLongPressTimer];
-    hasScrollCenter = NO;
-    if (compatibilityRightButtonDown) {
-        LiSendMouseButtonEvent(BUTTON_ACTION_RELEASE, BUTTON_RIGHT);
-        compatibilityRightButtonDown = NO;
-    }
-    lastTouchDown = nil;
 }
 
 - (void)touchesCancelled:(NSSet *)touches withEvent:(UIEvent *)event {
-    if ([self usesCompatibilityFallback]) {
-        [self sendCompatibilityEnded:touches withEvent:event];
-        return;
-    }
-
     for (UITouch *touch in touches) {
         [self sendNativeEvent:LI_TOUCH_EVENT_CANCEL forTouch:touch];
     }
-    [self invalidateLongPressTimer];
+    [self cancelNativePointers];
+    [self releaseCompatibilityButtons];
+    hybridMouseGesture = NO;
+    compatibilityPeakTouchCount = 0;
+    compatibilityGestureMoved = NO;
     hasScrollCenter = NO;
+    lastTouchDown = nil;
 }
 
 - (void)cancelAllTouches {
-    if (pointerIds.count > 0) {
-        LiSendTouchEvent(LI_TOUCH_EVENT_CANCEL_ALL, 0, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, LI_ROT_UNKNOWN);
-        [pointerIds removeAllObjects];
-    }
-    [self invalidateLongPressTimer];
+    [self cancelNativePointers];
+    [self releaseCompatibilityButtons];
+    hybridMouseGesture = NO;
+    compatibilityPeakTouchCount = 0;
+    compatibilityGestureMoved = NO;
     hasScrollCenter = NO;
-    if (compatibilityRightButtonDown) {
-        LiSendMouseButtonEvent(BUTTON_ACTION_RELEASE, BUTTON_RIGHT);
-        compatibilityRightButtonDown = NO;
-    }
-    if (compatibilityLeftButtonDown) {
-        LiSendMouseButtonEvent(BUTTON_ACTION_RELEASE, BUTTON_LEFT);
-        compatibilityLeftButtonDown = NO;
-    }
+    lastTouchDown = nil;
 }
 
 - (void)dealloc {

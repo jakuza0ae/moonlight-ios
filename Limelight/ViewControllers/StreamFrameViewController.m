@@ -53,6 +53,11 @@
 #endif
 }
 
+- (void)stopStream {
+    [_streamView cancelAllTouches];
+    [_streamMan stopStream];
+}
+
 - (void)viewDidAppear:(BOOL)animated
 {
     [super viewDidAppear:animated];
@@ -220,7 +225,7 @@
     if (parent == nil) {
         [_controllerSupport cleanup];
         [UIApplication sharedApplication].idleTimerDisabled = NO;
-        [_streamMan stopStream];
+        [self stopStream];
         if (_inactivityTimer != nil) {
             [_inactivityTimer invalidate];
             _inactivityTimer = nil;
@@ -467,7 +472,7 @@
         [self presentViewController:conTermAlert animated:YES completion:nil];
     });
 
-    [_streamMan stopStream];
+    [self stopStream];
 }
 
 - (void) stageStarting:(const char*)stageName {
@@ -513,7 +518,7 @@
         [self presentViewController:alert animated:YES completion:nil];
     });
     
-    [_streamMan stopStream];
+    [self stopStream];
 }
 
 - (void) launchFailed:(NSString*)message {

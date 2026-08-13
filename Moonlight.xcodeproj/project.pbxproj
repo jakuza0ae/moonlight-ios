@@ -179,6 +179,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		A5C7E00F2F0000010000000F /* InputMode.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = InputMode.h; sourceTree = "<group>"; };
 		A5C7E0002F00000100000001 /* TouchInputTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = TouchInputTests.m; sourceTree = "<group>"; };
 		A5C7E0022F00000100000002 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
 		A5C7E0042F00000100000004 /* MoonlightTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MoonlightTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -533,6 +534,7 @@
 		FB89460919F646E200339C8A /* Input */ = {
 			isa = PBXGroup;
 			children = (
+				A5C7E00F2F0000010000000F /* InputMode.h */,
 				FB89460A19F646E200339C8A /* ControllerSupport.h */,
 				FB89460B19F646E200339C8A /* ControllerSupport.m */,
 				FB89460C19F646E200339C8A /* StreamView.h */,
@@ -1055,6 +1057,7 @@
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/Limelight/Input",
+					"$(PROJECT_DIR)/Limelight/Stream",
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.moonlight-stream.MoonlightTests";
@@ -1075,6 +1078,7 @@
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/Limelight/Input",
+					"$(PROJECT_DIR)/Limelight/Stream",
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.moonlight-stream.MoonlightTests";

@@ -66,6 +66,10 @@ CGPoint LMScrollDeltaForTouchMovement(CGPoint previousCenter, CGPoint currentCen
 - (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event {
     touchMoved = false;
     peakTouchCount = [[event allTouches] count];
+    if (peakTouchCount != 1) {
+        [dragTimer invalidate];
+        dragTimer = nil;
+    }
     if ([[event allTouches] count] == 1) {
         UITouch *touch = [[event allTouches] anyObject];
         originalLocation = touchLocation = [touch locationInView:view];
@@ -187,6 +191,7 @@ CGPoint LMScrollDeltaForTouchMovement(CGPoint previousCenter, CGPoint currentCen
         isDragging = false;
         LiSendMouseButtonEvent(BUTTON_ACTION_RELEASE, BUTTON_LEFT);
     }
+    LiSendMouseButtonEvent(BUTTON_ACTION_RELEASE, BUTTON_RIGHT);
     touchMoved = false;
     peakTouchCount = 0;
 }

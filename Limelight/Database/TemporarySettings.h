@@ -7,12 +7,7 @@
 //
 
 #import "Settings+CoreDataClass.h"
-
-typedef NS_ENUM(NSInteger, LMInputMode) {
-    LMInputModeNativeTouch = 0,
-    LMInputModeMouseCompatibility,
-    LMInputModeHybrid,
-};
+#import "../Input/InputMode.h"
 
 @interface TemporarySettings : NSObject
 

@@ -6,7 +6,7 @@
 //  Copyright (c) 2014 Moonlight Stream. All rights reserved.
 //
 
-#import "../Database/TemporarySettings.h"
+#import "../Input/InputMode.h"
 
 @interface StreamConfiguration : NSObject
 

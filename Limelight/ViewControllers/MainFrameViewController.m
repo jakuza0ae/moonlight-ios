@@ -603,8 +603,6 @@ static NSMutableSet* hostList;
 
 - (void) prepareToStreamApp:(TemporaryApp *)app {
     _streamConfig = [[StreamConfiguration alloc] init];
-    // Preserve the existing game input path; desktop profiles can opt into native touch.
-    _streamConfig.inputMode = LMInputModeMouseCompatibility;
     _streamConfig.host = app.host.activeAddress;
     _streamConfig.httpsPort = app.host.httpsPort;
     _streamConfig.appID = app.id;
@@ -613,6 +611,7 @@ static NSMutableSet* hostList;
     
     DataManager* dataMan = [[DataManager alloc] init];
     TemporarySettings* streamSettings = [dataMan getSettings];
+    _streamConfig.inputMode = streamSettings.inputMode;
     
     _streamConfig.frameRate = [streamSettings.framerate intValue];
     if (@available(iOS 10.3, *)) {

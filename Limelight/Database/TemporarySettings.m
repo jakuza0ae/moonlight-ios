@@ -85,7 +85,8 @@
     self.onscreenControls = settings.onscreenControls;
     self.btMouseSupport = settings.btMouseSupport;
     self.absoluteTouchMode = settings.absoluteTouchMode;
-    self.inputMode = LMInputModeNativeTouch;
+    // Existing game launches remain on the legacy mouse path until a desktop profile selects another mode.
+    self.inputMode = LMInputModeMouseCompatibility;
     self.statsOverlay = settings.statsOverlay;
 #endif
     self.uniqueId = settings.uniqueId;
