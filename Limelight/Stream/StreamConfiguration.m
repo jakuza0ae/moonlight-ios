@@ -367,6 +367,7 @@ BOOL LMShouldRetryStreamFailure(BOOL reconnectEnabled, BOOL stopping) {
     copy.optimizeGameSettings = self.optimizeGameSettings;
     copy.playAudioOnPC = self.playAudioOnPC;
     copy.requireMatchingAppOnResume = self.requireMatchingAppOnResume;
+    copy.usesLightning = self.usesLightning;
     copy.swapABXYButtons = self.swapABXYButtons;
     copy.audioConfiguration = self.audioConfiguration;
     copy.supportedVideoFormats = self.supportedVideoFormats;

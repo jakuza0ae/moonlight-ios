@@ -16,6 +16,7 @@ FOUNDATION_EXPORT NSUInteger const LMSecondMonitorDiagnosticOverlayMaximumLength
 @interface LMStreamDiagnostics : NSObject
 
 @property (nonatomic, copy) NSString *state;
+@property (nonatomic) BOOL usesLightning;
 @property (nonatomic, copy, nullable) NSString *hostDisplayID;
 @property (nonatomic, copy, nullable) NSString *mappedOutput;
 @property (nonatomic, copy, nullable) NSString *captureBackend;

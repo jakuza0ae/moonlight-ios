@@ -217,9 +217,12 @@ static TemporaryHost *shortcutHost(NSString *uuid, NSArray<NSString *> *appNames
 - (void)testSecondDisplayShortcutPreservesAppMatchWhenCopyingConfiguration {
     StreamConfiguration *config = [[StreamConfiguration alloc] init];
     XCTAssertFalse(config.requireMatchingAppOnResume);
+    XCTAssertFalse(config.usesLightning);
     config.requireMatchingAppOnResume = YES;
+    config.usesLightning = YES;
     StreamConfiguration *copy = [config copy];
     XCTAssertTrue(copy.requireMatchingAppOnResume);
+    XCTAssertTrue(copy.usesLightning);
 }
 
 - (void)testSecondDisplayFormSheetLayout {
@@ -859,6 +862,7 @@ static TemporaryHost *shortcutHost(NSString *uuid, NSArray<NSString *> *appNames
 - (void)testSecondMonitorDiagnosticsFormatterIncludesBoundedRecordWithoutSecrets {
     LMStreamDiagnostics *diagnostics = [[LMStreamDiagnostics alloc] init];
     diagnostics.state = @"streaming";
+    diagnostics.usesLightning = YES;
     diagnostics.hostDisplayID = nil;
     diagnostics.mappedOutput = nil;
     diagnostics.captureBackend = nil;
@@ -877,6 +881,7 @@ static TemporaryHost *shortcutHost(NSString *uuid, NSArray<NSString *> *appNames
     NSString *formatted = LMFormatSecondMonitorDiagnostics(diagnostics);
 
     XCTAssertTrue([formatted containsString:@"State: streaming"]);
+    XCTAssertTrue([formatted containsString:@"Connection: Lightning USB"]);
     XCTAssertTrue([formatted containsString:@"Host display: unavailable"]);
     XCTAssertTrue([formatted containsString:@"Mapped output: unavailable"]);
     XCTAssertTrue([formatted containsString:@"Resolution: 1280x720"]);
@@ -917,6 +922,7 @@ static TemporaryHost *shortcutHost(NSString *uuid, NSArray<NSString *> *appNames
     XCTAssertFalse([formatted containsString:@"password=secret"]);
     XCTAssertFalse([formatted containsString:@"\r"]);
     XCTAssertTrue([formatted containsString:@"State: redacted"]);
+    XCTAssertTrue([formatted containsString:@"Connection: Network"]);
     XCTAssertTrue([formatted containsString:@"Host display: redacted"]);
 }
 

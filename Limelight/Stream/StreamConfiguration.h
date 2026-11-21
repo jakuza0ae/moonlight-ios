@@ -138,6 +138,7 @@ FOUNDATION_EXPORT BOOL LMShouldRetryStreamFailure(BOOL reconnectEnabled,
 @property BOOL optimizeGameSettings;
 @property BOOL playAudioOnPC;
 @property BOOL requireMatchingAppOnResume;
+@property BOOL usesLightning;
 @property BOOL swapABXYButtons;
 @property int audioConfiguration;
 @property int supportedVideoFormats;

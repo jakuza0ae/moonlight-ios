@@ -1065,7 +1065,7 @@ static NSMutableSet* hostList;
         return;
     }
 
-    NSString *waiting = @"Connect your iPad with Lightning, then run streamdesk-host usb on your computer.";
+    NSString *waiting = @"Plug in Lightning. If auto-connect is off, run streamdesk-host usb on the computer.";
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"USB"
         message:waiting preferredStyle:UIAlertControllerStyleAlert];
     __weak typeof(self) weakSelf = self;
@@ -1094,6 +1094,7 @@ static NSMutableSet* hostList;
             }
             controller->_streamConfig.host = [NSString stringWithFormat:@"127.0.0.1:%hu", port];
             controller->_streamConfig.httpsPort = port - 5;
+            controller->_streamConfig.usesLightning = YES;
             controller->_streamConfig.requireMatchingAppOnResume = YES;
             [controller->_appManager stopRetrieving];
             [controller performSegueWithIdentifier:@"createStreamFrame" sender:nil];

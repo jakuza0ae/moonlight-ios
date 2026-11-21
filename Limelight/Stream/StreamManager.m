@@ -140,8 +140,9 @@ NSString *LMFormatSecondMonitorDiagnostics(LMStreamDiagnostics *diagnostics) {
     NSString *rtt = diagnostics.rttMs != nil ? [NSString stringWithFormat:@"%ld ms", (long)diagnostics.rttMs.integerValue] : LMSecondMonitorDiagnosticUnavailable;
     NSString *droppedFrames = diagnostics.droppedFrames != nil ? [NSString stringWithFormat:@"%ld", (long)diagnostics.droppedFrames.integerValue] : LMSecondMonitorDiagnosticUnavailable;
     NSString *reconnects = diagnostics.reconnectCount != nil ? [NSString stringWithFormat:@"%ld", (long)diagnostics.reconnectCount.integerValue] : LMSecondMonitorDiagnosticUnavailable;
-    NSString *formatted = [NSString stringWithFormat:@"State: %@\nResolution: %@\nTarget FPS: %@\nReceived FPS: %@\nDropped frames: %@\nRTT: %@\nHost processing (avg): %@\nBitrate: %@\nCodec: %@\nHost display: %@\nMapped output: %@\nCapture backend: %@\nEncoder: %@\nReconnects: %@\nLast error: %@",
+    NSString *formatted = [NSString stringWithFormat:@"State: %@\nConnection: %@\nResolution: %@\nTarget FPS: %@\nReceived FPS: %@\nDropped frames: %@\nRTT: %@\nHost processing (avg): %@\nBitrate: %@\nCodec: %@\nHost display: %@\nMapped output: %@\nCapture backend: %@\nEncoder: %@\nReconnects: %@\nLast error: %@",
                            LMBoundedDiagnosticString(diagnostics.state),
+                           diagnostics.usesLightning ? @"Lightning USB" : @"Network",
                            LMBoundedDiagnosticString(diagnostics.resolution),
                            targetFps,
                            fps,
@@ -370,6 +371,7 @@ NSString *LMFormatLegacyStatsOverlay(NSInteger width,
 - (LMStreamDiagnostics *)getDiagnostics {
     LMStreamDiagnostics *diagnostics = [[LMStreamDiagnostics alloc] init];
     diagnostics.state = _diagnosticState ?: @"connecting";
+    diagnostics.usesLightning = _config.usesLightning;
     diagnostics.resolution = _config.width > 0 && _config.height > 0 ? [NSString stringWithFormat:@"%dx%d", _config.width, _config.height] : nil;
     diagnostics.targetFps = _config.frameRate > 0 ? @(_config.frameRate) : nil;
     diagnostics.bitrateKbps = _config.bitRate > 0 ? @(_config.bitRate) : nil;
