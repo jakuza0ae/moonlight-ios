@@ -21,6 +21,7 @@
 @optional
 - (void)streamViewDidRequestReconnect:(StreamView *)streamView;
 - (void)streamViewDidRequestDiagnostics:(StreamView *)streamView;
+- (void)streamViewDidRequestDisconnect:(StreamView *)streamView;
 
 @end
 

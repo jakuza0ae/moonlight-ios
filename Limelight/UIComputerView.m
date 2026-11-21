@@ -16,6 +16,8 @@
     UIActivityIndicatorView* _hostSpinner;
     id<HostCallback> _callback;
     CGSize _labelSize;
+    NSString *_presentedName;
+    NSString *_presentedStatus;
 }
 static const float REFRESH_CYCLE = 2.0f;
 
@@ -43,9 +45,19 @@ static const int LABEL_DY = 20;
     _hostIcon = [[UIImageView alloc] initWithFrame:self.frame];
     [_hostIcon setImage:[UIImage imageNamed:@"Computer"]];
     
-    self.layer.shadowColor = [[UIColor blackColor] CGColor];
-    self.layer.shadowOffset = CGSizeMake(5,8);
+#if TARGET_OS_TV
+    self.layer.shadowColor = UIColor.blackColor.CGColor;
+    self.layer.shadowOffset = CGSizeMake(5, 8);
     self.layer.shadowOpacity = 0.3;
+#else
+    _hostIcon.backgroundColor = [UIColor colorWithWhite:0.12 alpha:1];
+    _hostIcon.contentMode = UIViewContentModeCenter;
+    _hostIcon.layer.cornerRadius = 12;
+    _hostIcon.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+    _hostIcon.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.12].CGColor;
+    self.isAccessibilityElement = YES;
+    _hostIcon.isAccessibilityElement = NO;
+#endif
 
     [self addTarget:self action:@selector(hostButtonSelected:) forControlEvents:UIControlEventTouchDown];
     [self addTarget:self action:@selector(hostButtonDeselected:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchCancel | UIControlEventTouchDragExit];
@@ -104,7 +116,8 @@ static const int LABEL_DY = 20;
     
     [self addTarget:self action:@selector(addClicked) forControlEvents:UIControlEventPrimaryActionTriggered];
     
-    [_hostLabel setText:@"Add Host Manually"];
+    [_hostLabel setText:@"Add computer"];
+    self.accessibilityLabel = @"Add computer";
     [_hostLabel sizeToFit];
     
     [_hostOverlay setImage:[UIImage imageNamed:@"AddOverlayIcon"]];
@@ -173,7 +186,21 @@ static const int LABEL_DY = 20;
 }
 
 - (void) updateContentsForHost:(TemporaryHost*)host {
-    _hostLabel.text = _host.name;
+    NSString *status = @"Checking";
+    if (host.state == StateOnline) {
+        status = host.pairState == PairStateUnpaired ? @"Pairing needed" : @"Online";
+    } else if (host.state == StateOffline) {
+        status = @"Offline";
+    }
+    NSString *name = host.name ?: @"Computer";
+    if ([_presentedName isEqualToString:name] && [_presentedStatus isEqualToString:status]) {
+        return;
+    }
+    _presentedName = [name copy];
+    _presentedStatus = status;
+    self.accessibilityLabel = name;
+    self.accessibilityValue = status;
+    _hostLabel.text = name;
     [_hostLabel sizeToFit];
     
     if (host.state == StateOnline) {

@@ -169,7 +169,8 @@ BOOL LMShouldShowGamepadOverlayForStreamConfiguration(StreamConfiguration *strea
     [button setTitle:title forState:UIControlStateNormal];
     [button setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     button.titleLabel.font = [UIFont systemFontOfSize:15.0 weight:UIFontWeightSemibold];
-    button.backgroundColor = [UIColor colorWithWhite:0.12 alpha:0.92];
+    button.backgroundColor = [UIColor colorWithWhite:0.19 alpha:1];
+    button.contentEdgeInsets = UIEdgeInsetsMake(0, 12, 0, 12);
     button.layer.cornerRadius = 8.0;
     button.accessibilityLabel = title;
     button.translatesAutoresizingMaskIntoConstraints = NO;
@@ -182,7 +183,9 @@ BOOL LMShouldShowGamepadOverlayForStreamConfiguration(StreamConfiguration *strea
 - (void)installDesktopToolbar {
     desktopToolbar = [[UIView alloc] init];
     desktopToolbar.translatesAutoresizingMaskIntoConstraints = NO;
-    desktopToolbar.backgroundColor = [UIColor colorWithWhite:0.04 alpha:0.88];
+    desktopToolbar.backgroundColor = [UIColor colorWithWhite:0.08 alpha:0.96];
+    desktopToolbar.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.16].CGColor;
+    desktopToolbar.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
     desktopToolbar.layer.cornerRadius = 10.0;
     desktopToolbar.clipsToBounds = YES;
     [self addSubview:desktopToolbar];
@@ -207,15 +210,13 @@ BOOL LMShouldShowGamepadOverlayForStreamConfiguration(StreamConfiguration *strea
     [desktopInputModeSelector.widthAnchor constraintGreaterThanOrEqualToConstant:190.0].active = YES;
     [desktopInputModeSelector.heightAnchor constraintGreaterThanOrEqualToConstant:44.0].active = YES;
 
-    NSMutableArray<UIView *> *toolbarControls = [NSMutableArray arrayWithObjects:hideButton,
-                                                  desktopInputModeSelector,
-                                                  keyboardButton,
-                                                  reconnectButton,
-                                                  nil];
-    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"Moonlight.SecondMonitor.Diagnostics"]) {
-        [toolbarControls addObject:[self desktopToolbarButtonWithTitle:@"Diagnostics" action:@selector(requestDesktopDiagnostics:)]];
-    }
-    UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:toolbarControls];
+    UIButton *statsButton = [self desktopToolbarButtonWithTitle:@"Stats" action:@selector(requestDesktopDiagnostics:)];
+    UIButton *disconnectButton = [self desktopToolbarButtonWithTitle:@"Disconnect" action:@selector(requestDesktopDisconnect:)];
+    reconnectButton.enabled = streamConfig.profile.reconnectEnabled;
+    reconnectButton.hidden = !reconnectButton.enabled;
+    UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[
+        hideButton, desktopInputModeSelector, keyboardButton, reconnectButton, statsButton, disconnectButton,
+    ]];
     stack.translatesAutoresizingMaskIntoConstraints = NO;
     stack.axis = UILayoutConstraintAxisHorizontal;
     stack.alignment = UIStackViewAlignmentCenter;
@@ -304,6 +305,12 @@ BOOL LMShouldShowGamepadOverlayForStreamConfiguration(StreamConfiguration *strea
 - (void)requestDesktopDiagnostics:(UIButton *)sender {
     if ([interactionDelegate respondsToSelector:@selector(streamViewDidRequestDiagnostics:)]) {
         [interactionDelegate streamViewDidRequestDiagnostics:self];
+    }
+}
+
+- (void)requestDesktopDisconnect:(UIButton *)sender {
+    if ([interactionDelegate respondsToSelector:@selector(streamViewDidRequestDisconnect:)]) {
+        [interactionDelegate streamViewDidRequestDisconnect:self];
     }
 }
 

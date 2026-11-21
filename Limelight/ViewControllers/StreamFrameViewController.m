@@ -889,11 +889,22 @@
 
 - (void)streamViewDidRequestDiagnostics:(StreamView *)streamView {
     NSString *stats = [_streamMan getStatsOverlayText];
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Diagnostics"
-                                                                       message:stats ?: @"Diagnostics are not available until the stream is connected."
-                                                                preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Stream statistics"
+        message:stats ?: @"Statistics appear once the stream has started."
+        preferredStyle:UIAlertControllerStyleAlert];
+#if !TARGET_OS_TV
+    if (stats.length != 0) {
+        [alert addAction:[UIAlertAction actionWithTitle:@"Copy" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+            UIPasteboard.generalPasteboard.string = stats;
+        }]];
+    }
+#endif
+    [alert addAction:[UIAlertAction actionWithTitle:@"Done" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)streamViewDidRequestDisconnect:(StreamView *)streamView {
+    [self returnToMainFrame];
 }
 
 - (void)userInteractionBegan {
