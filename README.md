@@ -1,5 +1,14 @@
 # Moonlight iOS/tvOS
 
+
+## StreamDesk for iPad
+
+This branch focuses on using the iPad as an extended Linux desktop. Open **Second display** to configure a computer. The **StreamDesk Display** or **iPad Air** app on the host opens with a 4:3 profile. Start with 1280×960 at 30 FPS on the first-generation iPad Air.
+
+The [iPad IPA workflow](https://github.com/jakuza0ae/moonlight-ios/actions/workflows/build-unsigned-ipa.yml) produces an unsigned arm64 package targeting iOS 12. Stock iPads need a development signature and a provisioning profile for the device. The bundle ID is `org.streamdesk.client`.
+
+[Linux host setup](https://github.com/jakuza0ae/Sunshine/blob/linux-streamdesk/packaging/linux/streamdesk/README.md) · [Design and performance research](docs/streamdesk/research.md)
+
 [![AppVeyor Build Status](https://ci.appveyor.com/api/projects/status/kwv8vpwr457lqn25/branch/master?svg=true)](https://ci.appveyor.com/project/cgutman/moonlight-ios/branch/master)
 
 [Moonlight for iOS/tvOS](https://moonlight-stream.org) is an open source client for [Sunshine](https://github.com/LizardByte/Sunshine) and NVIDIA GameStream. Moonlight for iOS/tvOS allows you to stream your full collection of games and apps from your powerful desktop computer to your iOS device or Apple TV.
