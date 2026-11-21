@@ -18,6 +18,7 @@
 
 static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
 static const void *LMKeyboardActionAssociationKey = &LMKeyboardActionAssociationKey;
+static const CGFloat LMDesktopKeyboardAccessoryHeight = 56.0;
 #if !TARGET_OS_TV
 static const CGFloat LMDesktopDimBrightness = 0.30;
 #endif
@@ -36,6 +37,25 @@ BOOL LMShouldRestoreDesktopBrightness(CGFloat currentBrightness, CGFloat dimmedB
 
 @protocol StreamDeskTouchCancellation <NSObject>
 - (void)cancelAllTouches;
+@end
+
+@interface LMDesktopKeyButton : UIButton
+- (void)updateSurface;
+@end
+
+@implementation LMDesktopKeyButton
+
+- (void)updateSurface {
+    self.backgroundColor = self.isHighlighted ?
+        [UIColor colorWithRed:0.75 green:0.93 blue:0.79 alpha:1] :
+        [UIColor colorWithRed:0.20 green:0.22 blue:0.23 alpha:1];
+}
+
+- (void)setHighlighted:(BOOL)highlighted {
+    [super setHighlighted:highlighted];
+    [self updateSurface];
+}
+
 @end
 
 @implementation StreamView {
@@ -407,19 +427,76 @@ BOOL LMShouldRestoreDesktopBrightness(CGFloat currentBrightness, CGFloat dimmedB
                          0);
 }
 
-- (UIBarButtonItem *)desktopKeyboardButtonWithTitle:(NSString *)title action:(LMKeyboardAction)action {
-    UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+- (UIButton *)desktopKeyboardButtonWithTitle:(NSString *)title action:(LMKeyboardAction)action {
+    LMDesktopKeyButton *button = [[LMDesktopKeyButton alloc] initWithFrame:CGRectZero];
     [button setTitle:title forState:UIControlStateNormal];
-    [button setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    button.titleLabel.font = [UIFont systemFontOfSize:14.0 weight:UIFontWeightSemibold];
-    button.backgroundColor = [UIColor blackColor];
-    button.layer.cornerRadius = 6.0;
-    button.accessibilityLabel = title;
-    button.frame = CGRectMake(0, 0, 52, 36);
+    [button setTitleColor:[UIColor colorWithWhite:0.96 alpha:1] forState:UIControlStateNormal];
+    [button setTitleColor:[UIColor colorWithWhite:0.10 alpha:1] forState:UIControlStateHighlighted];
+    button.titleLabel.font = [UIFont systemFontOfSize:14.0 weight:UIFontWeightMedium];
+    button.layer.cornerRadius = 8.0;
+    button.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.13].CGColor;
+    button.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+    button.accessibilityLabel = action == LMKeyboardActionWindows ? @"Super (Windows key)" : title;
+    [button.widthAnchor constraintEqualToConstant:52].active = YES;
+    [button.heightAnchor constraintEqualToConstant:44].active = YES;
+    [button updateSurface];
     objc_setAssociatedObject(button, LMKeyboardActionAssociationKey, @(action), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [button addTarget:self action:@selector(desktopKeyboardActionDown:) forControlEvents:UIControlEventTouchDown];
     [button addTarget:self action:@selector(desktopKeyboardActionUp:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
-    return [[UIBarButtonItem alloc] initWithCustomView:button];
+    return button;
+}
+
+- (UIView *)desktopKeyboardAccessoryView {
+    UIView *accessory = [[UIView alloc] initWithFrame:CGRectMake(0, 0, CGRectGetWidth(self.bounds), LMDesktopKeyboardAccessoryHeight)];
+    accessory.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    accessory.backgroundColor = [UIColor colorWithRed:0.105 green:0.115 blue:0.125 alpha:1];
+    UIView *divider = [[UIView alloc] init];
+    divider.translatesAutoresizingMaskIntoConstraints = NO;
+    divider.backgroundColor = [UIColor colorWithWhite:1 alpha:0.12];
+    [accessory addSubview:divider];
+
+    UIScrollView *scroll = [[UIScrollView alloc] init];
+    scroll.translatesAutoresizingMaskIntoConstraints = NO;
+    scroll.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+    scroll.delaysContentTouches = NO;
+    scroll.showsVerticalScrollIndicator = NO;
+    [accessory addSubview:scroll];
+
+    UIButton *tab = [self desktopKeyboardButtonWithTitle:@"Tab" action:LMKeyboardActionTab];
+    UIButton *superKey = [self desktopKeyboardButtonWithTitle:@"Super" action:LMKeyboardActionWindows];
+    UIStackView *keys = [[UIStackView alloc] initWithArrangedSubviews:@[
+        [self desktopKeyboardButtonWithTitle:@"Esc" action:LMKeyboardActionEscape],
+        tab,
+        [self desktopKeyboardButtonWithTitle:@"Ctrl" action:LMKeyboardActionControl],
+        [self desktopKeyboardButtonWithTitle:@"Shift" action:LMKeyboardActionShift],
+        [self desktopKeyboardButtonWithTitle:@"Alt" action:LMKeyboardActionAlt],
+        superKey,
+        [self desktopKeyboardButtonWithTitle:@"Del" action:LMKeyboardActionDelete],
+    ]];
+    keys.translatesAutoresizingMaskIntoConstraints = NO;
+    keys.spacing = 6.0;
+    [keys setCustomSpacing:14.0 afterView:tab];
+    [keys setCustomSpacing:14.0 afterView:superKey];
+    [scroll addSubview:keys];
+
+    NSLayoutConstraint *fitsViewport = [scroll.contentLayoutGuide.widthAnchor constraintEqualToAnchor:scroll.frameLayoutGuide.widthAnchor];
+    fitsViewport.priority = UILayoutPriorityDefaultHigh;
+    [NSLayoutConstraint activateConstraints:@[
+        [divider.leadingAnchor constraintEqualToAnchor:accessory.leadingAnchor],
+        [divider.trailingAnchor constraintEqualToAnchor:accessory.trailingAnchor],
+        [divider.topAnchor constraintEqualToAnchor:accessory.topAnchor],
+        [divider.heightAnchor constraintEqualToConstant:1.0 / UIScreen.mainScreen.scale],
+        [scroll.leadingAnchor constraintEqualToAnchor:accessory.safeAreaLayoutGuide.leadingAnchor],
+        [scroll.trailingAnchor constraintEqualToAnchor:accessory.safeAreaLayoutGuide.trailingAnchor],
+        [scroll.topAnchor constraintEqualToAnchor:accessory.topAnchor],
+        [scroll.bottomAnchor constraintEqualToAnchor:accessory.bottomAnchor],
+        [scroll.contentLayoutGuide.heightAnchor constraintEqualToAnchor:scroll.frameLayoutGuide.heightAnchor],
+        [keys.centerXAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.centerXAnchor],
+        [keys.centerYAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.centerYAnchor],
+        [keys.leadingAnchor constraintGreaterThanOrEqualToAnchor:scroll.contentLayoutGuide.leadingAnchor constant:12.0],
+        fitsViewport,
+    ]];
+    return accessory;
 }
 
 - (LMKeyboardAction)desktopKeyboardActionForButton:(UIButton *)button {
@@ -448,19 +525,7 @@ BOOL LMShouldRestoreDesktopBrightness(CGFloat currentBrightness, CGFloat dimmedB
         keyboardTargetInstalled = YES;
     }
 
-    UIToolbar *toolbar = [[UIToolbar alloc] initWithFrame:CGRectMake(0, 0, self.bounds.size.width, 44.0)];
-    UIBarButtonItem *flexibleSpace = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil];
-    toolbar.items = @[
-        [self desktopKeyboardButtonWithTitle:@"Esc" action:LMKeyboardActionEscape],
-        [self desktopKeyboardButtonWithTitle:@"Tab" action:LMKeyboardActionTab],
-        [self desktopKeyboardButtonWithTitle:@"Ctrl" action:LMKeyboardActionControl],
-        [self desktopKeyboardButtonWithTitle:@"Shift" action:LMKeyboardActionShift],
-        [self desktopKeyboardButtonWithTitle:@"Alt" action:LMKeyboardActionAlt],
-        [self desktopKeyboardButtonWithTitle:@"Win" action:LMKeyboardActionWindows],
-        [self desktopKeyboardButtonWithTitle:@"Del" action:LMKeyboardActionDelete],
-        flexibleSpace,
-    ];
-    keyInputField.inputAccessoryView = toolbar;
+    keyInputField.inputAccessoryView = [self desktopKeyboardAccessoryView];
     isInputingText = YES;
     [keyInputField becomeFirstResponder];
 }

@@ -75,6 +75,8 @@ static TemporaryHost *shortcutHost(NSString *uuid, NSArray<NSString *> *appNames
 @interface StreamView (KeyboardTestAccess)
 - (void)onKeyboardPressed:(UITextField *)textField;
 - (void)sendKeystroke:(struct KeyEvent)event flags:(char)flags;
+- (UIView *)desktopKeyboardAccessoryView;
+- (LMKeyboardAction)desktopKeyboardActionForButton:(UIButton *)button;
 @end
 
 @interface LMKeyboardTrackingStreamView : StreamView
@@ -695,6 +697,53 @@ static TemporaryHost *shortcutHost(NSString *uuid, NSArray<NSString *> *appNames
     XCTAssertTrue([state beginReconnect]);
     XCTAssertFalse([state beginReconnect]);
     XCTAssertEqual(state.state, LMStreamStateFailed);
+}
+
+- (void)testDesktopKeyboardKeycapsCenterAndScrollWithoutShrinking {
+    StreamView *stream = [[StreamView alloc] initWithFrame:CGRectMake(0, 0, 768, 1024)];
+    UIView *accessory = [stream desktopKeyboardAccessoryView];
+    [accessory layoutIfNeeded];
+    UIScrollView *scroll = (UIScrollView *)accessory.subviews.lastObject;
+    UIStackView *group = nil;
+    for (UIView *view in scroll.subviews) {
+        if ([view isKindOfClass:UIStackView.class]) {
+            group = (UIStackView *)view;
+            break;
+        }
+    }
+    XCTAssertEqual(group.arrangedSubviews.count, 7U);
+    XCTAssertEqualWithAccuracy(CGRectGetMidX(group.frame), CGRectGetMidX(scroll.bounds), 0.5);
+
+    NSArray<NSNumber *> *actions = @[@(LMKeyboardActionEscape), @(LMKeyboardActionTab), @(LMKeyboardActionControl),
+        @(LMKeyboardActionShift), @(LMKeyboardActionAlt), @(LMKeyboardActionWindows), @(LMKeyboardActionDelete)];
+    [group.arrangedSubviews enumerateObjectsUsingBlock:^(UIView *view, NSUInteger index, BOOL *stop) {
+        UIButton *key = (UIButton *)view;
+        XCTAssertEqualWithAccuracy(CGRectGetHeight(key.bounds), 44, 0.5);
+        XCTAssertGreaterThanOrEqual(CGRectGetWidth(key.bounds), 44);
+        XCTAssertEqual([stream desktopKeyboardActionForButton:key], actions[index].integerValue);
+        XCTAssertNotNil(key.accessibilityLabel);
+    }];
+
+    UIButton *control = (UIButton *)group.arrangedSubviews[2];
+    UIColor *released = control.backgroundColor;
+    control.highlighted = YES;
+    XCTAssertNotEqualObjects(control.backgroundColor, released);
+
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithBounds:accessory.bounds];
+    UIImage *image = [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
+        [accessory.layer renderInContext:context.CGContext];
+    }];
+    XCTAttachment *attachment = [XCTAttachment attachmentWithImage:image];
+    attachment.name = @"Desktop keyboard keycaps";
+    attachment.lifetime = XCTAttachmentLifetimeKeepAlways;
+    [self addAttachment:attachment];
+
+    control.highlighted = NO;
+    XCTAssertEqualObjects(control.backgroundColor, released);
+    accessory.frame = CGRectMake(0, 0, 320, 56);
+    [accessory layoutIfNeeded];
+    XCTAssertGreaterThan(scroll.contentSize.width, scroll.bounds.size.width);
+    XCTAssertEqualWithAccuracy(CGRectGetWidth(control.bounds), 52, 0.5);
 }
 
 - (void)testKeyboardActionStateReleasesHeldModifiers {
