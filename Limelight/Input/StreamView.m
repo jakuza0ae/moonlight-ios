@@ -1039,10 +1039,7 @@ BOOL LMShouldShowGamepadOverlayForStreamConfiguration(StreamConfiguration *strea
 }
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
-    // This method is called when the "Return" key is pressed.
-    LiSendKeyboardEvent(0x0d, KEY_ACTION_DOWN, 0);
-    usleep(50 * 1000);
-    LiSendKeyboardEvent(0x0d, KEY_ACTION_UP, 0);
+    [self sendKeystroke:(struct KeyEvent){.keycode = 0x0D} flags:0];
     return NO;
 }
 
@@ -1054,38 +1051,40 @@ BOOL LMShouldShowGamepadOverlayForStreamConfiguration(StreamConfiguration *strea
     [keysDown removeAllObjects];
 }
 
-- (void)onKeyboardPressed:(UITextField *)textField {
-    NSString* inputText = textField.text;
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
-        // If the text became empty, we know the user pressed the backspace key.
-        if ([inputText isEqual:@""]) {
-            LiSendKeyboardEvent(0x08, KEY_ACTION_DOWN, 0);
-            usleep(50 * 1000);
-            LiSendKeyboardEvent(0x08, KEY_ACTION_UP, 0);
-        } else {
-            // Character 0 will be our known sentinel value
-            
-            // Check if any characters exist which can't be represented in a basic key event
-            for (int i = 1; i < [inputText length]; i++) {
-                struct KeyEvent event = [KeyboardSupport translateKeyEvent:[inputText characterAtIndex:i] withModifierFlags:0];
-                if (event.keycode == 0) {
-                    // We found an unknown key, so send the entire string as UTF-8
-                    const char* utf8String = [inputText UTF8String];
-                    
-                    // Skip the first character which is our sentinel
-                    LiSendUtf8TextEvent(utf8String + 1, (int)strlen(utf8String) - 1);
-                    return;
-                }
+- (void)sendKeyboardText:(NSString *)inputText {
+    if ([inputText isEqualToString:@""]) {
+        [self sendKeystroke:(struct KeyEvent){.keycode = 0x08} flags:0];
+        return;
+    }
+
+    // The field starts with a sentinel so iOS reports Backspace on an otherwise empty field.
+    for (NSUInteger i = 1; i < inputText.length; i++) {
+        struct KeyEvent event = [KeyboardSupport translateKeyEvent:[inputText characterAtIndex:i] withModifierFlags:0];
+        if (event.keycode == 0) {
+            NSData *utf8 = [[inputText substringFromIndex:1] dataUsingEncoding:NSUTF8StringEncoding];
+            if (utf8.length != 0) {
+                LiSendUtf8TextEvent(utf8.bytes, (unsigned int)utf8.length);
             }
-            
-            // We didn't find any unknown characters, so send them all as basic key events
-            for (int i = 1; i < [inputText length]; i++) {
-                struct KeyEvent event = [KeyboardSupport translateKeyEvent:[inputText characterAtIndex:i] withModifierFlags:0];
-                assert(event.keycode != 0);
-                [self sendLowLevelEvent:event];
-            }
+            return;
         }
-    });
+    }
+
+    for (NSUInteger i = 1; i < inputText.length; i++) {
+        struct KeyEvent event = [KeyboardSupport translateKeyEvent:[inputText characterAtIndex:i] withModifierFlags:0];
+        [self sendLowLevelEvent:event];
+    }
+}
+
+- (void)onKeyboardPressed:(UITextField *)textField {
+    NSString *inputText = textField.text;
+    if (desktopMode) {
+        [self sendKeyboardText:inputText];
+    }
+    else {
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+            [self sendKeyboardText:inputText];
+        });
+    }
     
     // Reset text field back to known state
     textField.text = @"0";
@@ -1107,20 +1106,28 @@ BOOL LMShouldShowGamepadOverlayForStreamConfiguration(StreamConfiguration *strea
 }
 
 - (void)sendLowLevelEvent:(struct KeyEvent)event {
+    if (desktopMode) {
+        [self sendKeystroke:event flags:SS_KBE_FLAG_NON_NORMALIZED];
+        return;
+    }
+
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
-        // When we want to send a modified key (like uppercase letters) we need to send the
-        // modifier ("shift") seperately from the key itself.
-        if (event.modifier != 0) {
-            LiSendKeyboardEvent(event.modifierKeycode, KEY_ACTION_DOWN, event.modifier);
-        }
-        // Let the host know these are not (necessarily) normalized to US English scancodes
-        LiSendKeyboardEvent2(event.keycode, KEY_ACTION_DOWN, event.modifier, SS_KBE_FLAG_NON_NORMALIZED);
-        usleep(50 * 1000);
-        LiSendKeyboardEvent2(event.keycode, KEY_ACTION_UP, event.modifier, SS_KBE_FLAG_NON_NORMALIZED);
-        if (event.modifier != 0) {
-            LiSendKeyboardEvent(event.modifierKeycode, KEY_ACTION_UP, event.modifier);
-        }
+        [self sendKeystroke:event flags:SS_KBE_FLAG_NON_NORMALIZED];
     });
+}
+
+- (void)sendKeystroke:(struct KeyEvent)event flags:(char)flags {
+    if (event.modifier != 0) {
+        LiSendKeyboardEvent(event.modifierKeycode, KEY_ACTION_DOWN, event.modifier);
+    }
+    LiSendKeyboardEvent2(event.keycode, KEY_ACTION_DOWN, event.modifier, flags);
+    if (!desktopMode) {
+        usleep(50 * 1000);
+    }
+    LiSendKeyboardEvent2(event.keycode, KEY_ACTION_UP, event.modifier, flags);
+    if (event.modifier != 0) {
+        LiSendKeyboardEvent(event.modifierKeycode, KEY_ACTION_UP, event.modifier);
+    }
 }
 
 - (BOOL)canBecomeFirstResponder {

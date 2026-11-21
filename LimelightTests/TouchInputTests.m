@@ -6,9 +6,11 @@
 #import "Connection.h"
 #import "StreamFrameViewController.h"
 #import "KeyboardInputField.h"
+#import "KeyboardSupport.h"
 #import "StreamView.h"
 #import "StreamManager.h"
 #import "SettingsViewController.h"
+#include <Limelight.h>
 
 @interface LMPreviewComputer : NSObject
 @property(nonatomic, copy) NSString *name;
@@ -38,6 +40,23 @@
         self.cleanupCompleted = nil;
         completion();
     }
+}
+
+@end
+
+@interface StreamView (KeyboardTestAccess)
+- (void)onKeyboardPressed:(UITextField *)textField;
+- (void)sendKeystroke:(struct KeyEvent)event flags:(char)flags;
+@end
+
+@interface LMKeyboardTrackingStreamView : StreamView
+@property (nonatomic, strong) NSMutableArray<NSArray<NSNumber *> *> *keystrokes;
+@end
+
+@implementation LMKeyboardTrackingStreamView
+
+- (void)sendKeystroke:(struct KeyEvent)event flags:(char)flags {
+    [self.keystrokes addObject:@[@(event.keycode), @(event.modifier), @(flags)]];
 }
 
 @end
@@ -562,6 +581,29 @@
     XCTAssertEqual(callbacks.count, 2U);
     XCTAssertEqualObjects(callbacks[0], (@[@(LMKeyboardActionShift), @YES]));
     XCTAssertEqualObjects(callbacks[1], (@[@(LMKeyboardActionShift), @NO]));
+}
+
+- (void)testSecondMonitorTextBackspaceAndReturnEnqueueInEventOrder {
+    LMKeyboardTrackingStreamView *streamView = [[LMKeyboardTrackingStreamView alloc] initWithFrame:CGRectZero];
+    streamView.keystrokes = [NSMutableArray array];
+    [streamView setValue:@YES forKey:@"desktopMode"];
+    UITextField *field = [[UITextField alloc] initWithFrame:CGRectZero];
+
+    field.text = @"0llA";
+    [streamView onKeyboardPressed:field];
+    XCTAssertEqualObjects(field.text, @"0");
+
+    field.text = @"";
+    [streamView onKeyboardPressed:field];
+    XCTAssertFalse([streamView textFieldShouldReturn:field]);
+
+    XCTAssertEqualObjects(streamView.keystrokes, (@[
+        @[@('L'), @0, @(SS_KBE_FLAG_NON_NORMALIZED)],
+        @[@('L'), @0, @(SS_KBE_FLAG_NON_NORMALIZED)],
+        @[@('A'), @(MODIFIER_SHIFT), @(SS_KBE_FLAG_NON_NORMALIZED)],
+        @[@0x08, @0, @0],
+        @[@0x0D, @0, @0],
+    ]));
 }
 
 - (void)testSecondMonitorToolbarAndOverlayPredicatesDoNotApplyToGameMode {
