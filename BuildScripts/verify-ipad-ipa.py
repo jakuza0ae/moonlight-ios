@@ -15,6 +15,8 @@ MACHO_MAGICS = {
     bytes.fromhex(magic)
     for magic in ("cffaedfe", "feedfacf", "cefaedfe", "feedface", "cafebabe", "bebafeca", "cafebabf", "bfbafeca")
 }
+# otool -h without -v prints the numeric CPU type and subtype from the selected slice.
+ARM64_BASELINE_HEADER = re.compile(r"^\s*0xfeedfacf\s+16777228\s+0\s+0x00\s", re.MULTILINE)
 VERSION = re.compile(
     r"cmd LC_BUILD_VERSION\s+cmdsize \d+\s+platform (?:2|IOS|iOS)\s+(?:sdk [\d.]+\s+)?minos ([\d.]+)"
     r"|cmd LC_VERSION_MIN_IPHONEOS\s+cmdsize \d+\s+version ([\d.]+)"
@@ -51,7 +53,9 @@ def verify(archive_path):
         for name in binaries:
             binary = pathlib.Path(directory) / "macho"
             binary.write_bytes(archive.read(name))
-            commands = subprocess.check_output([*otool, "-arch", "arm64", "-l", str(binary)], text=True)
+            commands = subprocess.check_output([*otool, "-arch", "arm64", "-h", "-l", str(binary)], text=True)
+            if not ARM64_BASELINE_HEADER.search(commands):
+                raise ValueError(f"{name}: missing baseline ARM64/ALL slice for iPad Air 1")
             match = VERSION.search(commands)
             if not match:
                 raise ValueError(f"{name}: missing arm64 iOS deployment command")
@@ -61,7 +65,7 @@ def verify(archive_path):
                 raise ValueError(f"{name}: incompatible iOS minimum {'.'.join(components)}")
             if "LC_DYLD_CHAINED_FIXUPS" in commands:
                 raise ValueError(f"{name}: chained fixups require a newer iOS loader")
-        print(f"Verified {len(binaries)} arm64 Mach-O files for iOS 12")
+        print(f"Verified {len(binaries)} baseline ARM64/ALL Mach-O files for iOS 12")
 
 
 if __name__ == "__main__":
