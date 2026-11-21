@@ -467,7 +467,7 @@ static UIColor *SDAccent(void) {
     [self updateFrameRateAvailability];
 
     [self addSectionTitle:@"Sound and input"];
-    _audioSelector = [[UISegmentedControl alloc] initWithItems:@[@"Off", @"Host", @"Stream"]];
+    _audioSelector = [[UISegmentedControl alloc] initWithItems:@[@"Host only", @"Both", @"iPad only"]];
     _audioSelector.selectedSegmentIndex = MIN(self.profile.audioPolicy, 2);
     _audioSelector.accessibilityLabel = @"Audio output";
     [self addControl:_audioSelector];

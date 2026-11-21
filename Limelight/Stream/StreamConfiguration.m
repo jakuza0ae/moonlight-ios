@@ -32,6 +32,14 @@ BOOL LMShouldMarkSecondMonitorLaunch(StreamConfiguration *configuration) {
     return configuration.profile != nil && configuration.profile.mode == LMStreamModeSecondMonitor;
 }
 
+NSString *LMStreamDeskLaunchParameters(StreamConfiguration *configuration) {
+    if (!LMShouldMarkSecondMonitorLaunch(configuration)) {
+        return @"";
+    }
+    return configuration.profile.audioPolicy == LMAudioPolicyDisabled ?
+        @"&secondMonitor=1&streamDeskAudio=off" : @"&secondMonitor=1";
+}
+
 BOOL LMShouldSendCompatibilityLongPress(LMInputMode inputMode, BOOL nativeTouchAvailable) {
     return inputMode == LMInputModeMouseCompatibility || !nativeTouchAvailable;
 }
@@ -401,7 +409,7 @@ forCapabilityProfile:(LMDeviceCapabilityProfile)capabilityProfile
     self.bitRate = (int)profile.bitrate;
     self.useFramePacing = profile.framePacing;
     self.inputMode = profile.inputMode;
-    self.playAudioOnPC = profile.audioPolicy == LMAudioPolicyHost;
+    self.playAudioOnPC = profile.audioPolicy != LMAudioPolicyStream;
     self.audioConfiguration = AUDIO_CONFIGURATION_STEREO;
     self.optimizeGameSettings = NO;
     self.gamepadMask = 0;

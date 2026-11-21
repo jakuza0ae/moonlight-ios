@@ -354,6 +354,10 @@ static TemporaryHost *shortcutHost(NSString *uuid, NSArray<NSString *> *appNames
 
     XCTAssertTrue(LMShouldMarkSecondMonitorLaunch(secondMonitor));
     XCTAssertFalse(LMShouldMarkSecondMonitorLaunch(game));
+    XCTAssertEqualObjects(LMStreamDeskLaunchParameters(secondMonitor), @"&secondMonitor=1&streamDeskAudio=off");
+    secondMonitor.profile.audioPolicy = LMAudioPolicyStream;
+    XCTAssertEqualObjects(LMStreamDeskLaunchParameters(secondMonitor), @"&secondMonitor=1");
+    XCTAssertEqualObjects(LMStreamDeskLaunchParameters(game), @"");
 }
 
 - (void)testNativeLongPressDoesNotUseCompatibilityMouseSemantics {
@@ -536,7 +540,7 @@ static TemporaryHost *shortcutHost(NSString *uuid, NSArray<NSString *> *appNames
     XCTAssertEqual(configuration.supportedVideoFormats, VIDEO_FORMAT_H264);
     XCTAssertEqual(configuration.inputMode, LMInputModeNativeTouch);
     XCTAssertEqual(configuration.gamepadMask, 0);
-    XCTAssertFalse(configuration.playAudioOnPC);
+    XCTAssertTrue(configuration.playAudioOnPC);
 }
 
 - (void)testStoredProfileDictionaryRoundTripsWithoutChangingMode {

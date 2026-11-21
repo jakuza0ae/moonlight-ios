@@ -268,7 +268,7 @@
     // on GFE 3.20.3. We do not do this hack for Sunshine (which is
     // indicated by a negative version in the last field.
     int fps = (config.frameRate > 60 && ![config.appVersion containsString:@".-"]) ? 0 : config.frameRate;
-    NSString *secondMonitorQuery = LMShouldMarkSecondMonitorLaunch(config) ? @"&secondMonitor=1" : @"";
+    NSString *secondMonitorQuery = LMStreamDeskLaunchParameters(config);
     
     NSString* urlString = [NSString stringWithFormat:@"%@/%@?uniqueid=%@&appid=%@&mode=%dx%dx%d&additionalStates=1&sops=%d&rikey=%@&rikeyid=%d%@&localAudioPlayMode=%d&surroundAudioInfo=%d&remoteControllersBitmap=%d&gcmap=%d&gcpersist=%d%@%s",
                            _baseHTTPSURL, verb, _uniqueId,

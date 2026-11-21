@@ -7,6 +7,8 @@ This branch focuses on using the iPad as an extended Linux desktop. **Second dis
 
 The first-generation iPad Air starts at 1280×960 and 30 FPS. The 4:3 modes also offer 60 FPS. Use **Stats** in the stream toolbar to compare the requested and received frame rates, network drops, and the host's reported average processing time.
 
+**Host only** keeps sound on the computer and asks the StreamDesk host to send only video. **Both** plays sound on both devices. **iPad only** sends sound to the iPad when audio streaming is enabled on the host.
+
 To connect from a launcher or a Shortcuts action that opens a URL, use `streamdesk://second-display`. Pair the computer and open its app list once, then choose it in **Second display** and save. If there is only one eligible paired computer, the shortcut can use it without a saved choice. Otherwise it opens the settings to let you pick a computer. The computer must already be running the StreamDesk host.
 
 In a second-display stream, swipe down from the top edge to show the toolbar. **Dim** reduces display brightness to 30%. **Restore** returns the previous brightness. The app also releases dimming when the stream closes or the iPad leaves the app.

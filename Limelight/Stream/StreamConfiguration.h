@@ -63,6 +63,7 @@ FOUNDATION_EXPORT BOOL LMSecondMonitorProfileSupportsExplicit1080p30(BOOL optIn,
                                                                       CGSize resolution,
                                                                       NSInteger fps);
 FOUNDATION_EXPORT BOOL LMShouldMarkSecondMonitorLaunch(StreamConfiguration *configuration);
+FOUNDATION_EXPORT NSString *LMStreamDeskLaunchParameters(StreamConfiguration *configuration);
 FOUNDATION_EXPORT BOOL LMShouldSendCompatibilityLongPress(LMInputMode inputMode,
                                                            BOOL nativeTouchAvailable);
 FOUNDATION_EXPORT BOOL LMShouldRetryStreamFailure(BOOL reconnectEnabled,
