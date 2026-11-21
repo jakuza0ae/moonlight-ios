@@ -44,10 +44,16 @@ static TemporaryHost *shortcutHost(NSString *uuid, NSArray<NSString *> *appNames
 @interface LMTrackingStreamView : StreamView
 @property (nonatomic) BOOL cancelledOnMainThread;
 @property (nonatomic) BOOL keyboardReleasedOnMainThread;
+@property (nonatomic) BOOL brightnessRestoredOnMainThread;
 @property (nonatomic, copy) void (^cleanupCompleted)(void);
 @end
 
 @implementation LMTrackingStreamView
+
+- (void)restoreDesktopBrightness {
+    self.brightnessRestoredOnMainThread = [NSThread isMainThread];
+    [super restoreDesktopBrightness];
+}
 
 - (void)cancelAllTouches {
     self.cancelledOnMainThread = [NSThread isMainThread];
@@ -86,6 +92,13 @@ static TemporaryHost *shortcutHost(NSString *uuid, NSArray<NSString *> *appNames
 @end
 
 @implementation TouchInputTests
+
+- (void)testDesktopBrightnessRestoresOnlyWhileTheDimValueIsStillApplied {
+    XCTAssertTrue(LMShouldRestoreDesktopBrightness(0.30, 0.30));
+    XCTAssertTrue(LMShouldRestoreDesktopBrightness(0.301, 0.30));
+    XCTAssertFalse(LMShouldRestoreDesktopBrightness(0.45, 0.30));
+    XCTAssertFalse(LMShouldRestoreDesktopBrightness(0.15, 0.30));
+}
 
 - (void)testSecondDisplayShortcutAcceptsOnlyTheDocumentedURL {
     XCTAssertTrue(LMIsSecondDisplayShortcutURL([NSURL URLWithString:@"streamdesk://second-display"]));
@@ -821,6 +834,7 @@ static TemporaryHost *shortcutHost(NSString *uuid, NSArray<NSString *> *appNames
     });
 
     [self waitForExpectationsWithTimeout:1.0 handler:nil];
+    XCTAssertTrue(streamView.brightnessRestoredOnMainThread);
     XCTAssertTrue(streamView.cancelledOnMainThread);
     XCTAssertTrue(streamView.keyboardReleasedOnMainThread);
 }

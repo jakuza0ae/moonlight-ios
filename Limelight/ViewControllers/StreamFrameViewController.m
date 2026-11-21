@@ -78,6 +78,7 @@
         return;
     }
 
+    [_streamView restoreDesktopBrightness];
     [_streamView cancelAllTouches];
 }
 
@@ -492,6 +493,7 @@
 
 // This will fire if the user opens control center or gets a low battery message
 - (void)applicationWillResignActive:(NSNotification *)notification {
+    [_streamView restoreDesktopBrightness];
     if (_inactivityTimer != nil) {
         [_inactivityTimer invalidate];
     }

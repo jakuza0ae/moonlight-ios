@@ -8,6 +8,7 @@
 
 #import "StreamView.h"
 #include <Limelight.h>
+#include <math.h>
 #import "DataManager.h"
 #import "ControllerSupport.h"
 #import "KeyboardSupport.h"
@@ -17,6 +18,9 @@
 
 static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
 static const void *LMKeyboardActionAssociationKey = &LMKeyboardActionAssociationKey;
+#if !TARGET_OS_TV
+static const CGFloat LMDesktopDimBrightness = 0.30;
+#endif
 
 BOOL LMShouldShowDesktopToolbarForStreamConfiguration(StreamConfiguration *streamConfig) {
     return streamConfig.profile != nil && streamConfig.profile.mode == LMStreamModeSecondMonitor;
@@ -24,6 +28,10 @@ BOOL LMShouldShowDesktopToolbarForStreamConfiguration(StreamConfiguration *strea
 
 BOOL LMShouldShowGamepadOverlayForStreamConfiguration(StreamConfiguration *streamConfig) {
     return !LMShouldShowDesktopToolbarForStreamConfiguration(streamConfig);
+}
+
+BOOL LMShouldRestoreDesktopBrightness(CGFloat currentBrightness, CGFloat dimmedBrightness) {
+    return fabs(currentBrightness - dimmedBrightness) < 0.005;
 }
 
 @protocol StreamDeskTouchCancellation <NSObject>
@@ -61,6 +69,12 @@ BOOL LMShouldShowGamepadOverlayForStreamConfiguration(StreamConfiguration *strea
     StreamConfiguration *streamConfig;
     UIView *desktopToolbar;
     UISegmentedControl *desktopInputModeSelector;
+#if !TARGET_OS_TV
+    UIButton *desktopBrightnessButton;
+    UIScreen *dimmedScreen;
+    CGFloat originalBrightness;
+    CGFloat appliedBrightness;
+#endif
     BOOL desktopToolbarVisible;
     BOOL desktopMode;
     BOOL keyboardTargetInstalled;
@@ -201,6 +215,10 @@ BOOL LMShouldShowGamepadOverlayForStreamConfiguration(StreamConfiguration *strea
     UIButton *hideButton = [self desktopToolbarButtonWithTitle:@"Hide" action:@selector(hideDesktopToolbar:)];
     UIButton *keyboardButton = [self desktopToolbarButtonWithTitle:@"Keyboard" action:@selector(showDesktopKeyboard:)];
     UIButton *reconnectButton = [self desktopToolbarButtonWithTitle:@"Reconnect" action:@selector(requestDesktopReconnect:)];
+#if !TARGET_OS_TV
+    desktopBrightnessButton = [self desktopToolbarButtonWithTitle:@"Dim" action:@selector(toggleDesktopBrightness:)];
+    desktopBrightnessButton.accessibilityLabel = @"Dim screen to 30 percent";
+#endif
 
     desktopInputModeSelector = [[UISegmentedControl alloc] initWithItems:@[@"Touch", @"Mouse", @"Hybrid"]];
     desktopInputModeSelector.translatesAutoresizingMaskIntoConstraints = NO;
@@ -215,7 +233,11 @@ BOOL LMShouldShowGamepadOverlayForStreamConfiguration(StreamConfiguration *strea
     reconnectButton.enabled = streamConfig.profile.reconnectEnabled;
     reconnectButton.hidden = !reconnectButton.enabled;
     UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[
-        hideButton, desktopInputModeSelector, keyboardButton, reconnectButton, statsButton, disconnectButton,
+        hideButton, desktopInputModeSelector, keyboardButton, reconnectButton,
+#if !TARGET_OS_TV
+        desktopBrightnessButton,
+#endif
+        statsButton, disconnectButton,
     ]];
     stack.translatesAutoresizingMaskIntoConstraints = NO;
     stack.axis = UILayoutConstraintAxisHorizontal;
@@ -260,6 +282,9 @@ BOOL LMShouldShowGamepadOverlayForStreamConfiguration(StreamConfiguration *strea
     desktopToolbar.userInteractionEnabled = visible;
     if (visible) {
         desktopToolbar.hidden = NO;
+#if !TARGET_OS_TV
+        [self updateDesktopBrightnessButton];
+#endif
     }
 
     void (^changes)(void) = ^{
@@ -282,6 +307,48 @@ BOOL LMShouldShowGamepadOverlayForStreamConfiguration(StreamConfiguration *strea
 
 - (void)hideDesktopToolbar:(UIButton *)sender {
     [self setDesktopToolbarVisible:NO animated:YES];
+}
+
+#if !TARGET_OS_TV
+- (void)updateDesktopBrightnessButton {
+    BOOL dimmed = dimmedScreen != nil;
+    desktopBrightnessButton.enabled = dimmed || self.window.screen.brightness > LMDesktopDimBrightness;
+    [desktopBrightnessButton setTitle:dimmed ? @"Restore" : @"Dim" forState:UIControlStateNormal];
+    desktopBrightnessButton.accessibilityLabel = dimmed ? @"Restore screen brightness" : @"Dim screen to 30 percent";
+}
+
+- (void)toggleDesktopBrightness:(UIButton *)sender {
+    if (dimmedScreen != nil) {
+        [self restoreDesktopBrightness];
+        return;
+    }
+
+    UIScreen *screen = self.window.screen;
+    if (screen == nil || screen.brightness <= LMDesktopDimBrightness) {
+        return;
+    }
+
+    originalBrightness = screen.brightness;
+    dimmedScreen = screen;
+    screen.brightness = LMDesktopDimBrightness;
+    appliedBrightness = screen.brightness;
+    [self updateDesktopBrightnessButton];
+}
+#endif
+
+- (void)restoreDesktopBrightness {
+#if !TARGET_OS_TV
+    if (dimmedScreen == nil) {
+        return;
+    }
+
+    UIScreen *screen = dimmedScreen;
+    dimmedScreen = nil;
+    if (LMShouldRestoreDesktopBrightness(screen.brightness, appliedBrightness)) {
+        screen.brightness = originalBrightness;
+    }
+    [self updateDesktopBrightnessButton];
+#endif
 }
 
 - (void)desktopInputModeChanged:(UISegmentedControl *)sender {
@@ -450,6 +517,7 @@ BOOL LMShouldShowGamepadOverlayForStreamConfiguration(StreamConfiguration *strea
 - (void)didMoveToWindow {
     [super didMoveToWindow];
     if (self.window == nil) {
+        [self restoreDesktopBrightness];
         [self cancelAllTouches];
         [keyInputField resignFirstResponder];
     }

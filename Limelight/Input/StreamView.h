@@ -27,6 +27,7 @@
 
 FOUNDATION_EXPORT BOOL LMShouldShowDesktopToolbarForStreamConfiguration(StreamConfiguration *streamConfig);
 FOUNDATION_EXPORT BOOL LMShouldShowGamepadOverlayForStreamConfiguration(StreamConfiguration *streamConfig);
+FOUNDATION_EXPORT BOOL LMShouldRestoreDesktopBrightness(CGFloat currentBrightness, CGFloat dimmedBrightness);
 
 #if TARGET_OS_TV
 @interface StreamView : UIView <X1KitMouseDelegate, UITextFieldDelegate>
@@ -43,6 +44,7 @@ FOUNDATION_EXPORT BOOL LMShouldShowGamepadOverlayForStreamConfiguration(StreamCo
 - (void)setInputMode:(LMInputMode)inputMode;
 - (BOOL)isDesktopToolbarVisible;
 - (void)setDesktopToolbarVisible:(BOOL)visible animated:(BOOL)animated;
+- (void)restoreDesktopBrightness;
 - (void)releaseKeyboardActions;
 
 #if !TARGET_OS_TV

@@ -7,6 +7,8 @@ This branch focuses on using the iPad as an extended Linux desktop. Open **Secon
 
 To connect from a launcher or a Shortcuts action that opens a URL, use `streamdesk://second-display`. Pair the computer and open its app list once, then choose it in **Second display** and save. If there is only one eligible paired computer, the shortcut can use it without a saved choice. Otherwise it opens the settings to let you pick a computer. The computer must already be running the StreamDesk host.
 
+In a second-display stream, swipe down from the top edge to show the toolbar. **Dim** reduces display brightness to 30%. **Restore** returns the previous brightness. The app also releases dimming when the stream closes or the iPad leaves the app.
+
 The [iPad IPA workflow](https://github.com/jakuza0ae/moonlight-ios/actions/workflows/build-unsigned-ipa.yml) produces an unsigned arm64 package targeting iOS 12. Stock iPads need a development signature and a provisioning profile for the device. The bundle ID is `org.streamdesk.client`.
 
 [Linux host setup](https://github.com/jakuza0ae/Sunshine/blob/linux-streamdesk/packaging/linux/streamdesk/README.md) · [Design and performance research](docs/streamdesk/research.md)
