@@ -39,6 +39,38 @@
 
 @implementation TouchInputTests
 
+- (void)testSecondDisplayFormSheetLayout {
+    LMStreamProfile *profile = [LMStreamProfile defaultSecondMonitorProfile];
+    UINavigationController *navigation = LMCreateSecondMonitorSettingsNavigationController(
+        @[@{@"name": @"Workstation", @"uuid": @"preview-host"}], @"preview-host", profile, NO, nil);
+    navigation.view.frame = CGRectMake(0, 0, 540, 660);
+    [navigation.view setNeedsLayout];
+    [navigation.view layoutIfNeeded];
+    UIViewController *settings = navigation.topViewController;
+    XCTAssertEqualObjects(settings.title, @"Second display");
+
+    UIScrollView *scroll = nil;
+    for (UIView *subview in settings.view.subviews) {
+        if ([subview isKindOfClass:UIScrollView.class]) {
+            scroll = (UIScrollView *)subview;
+            break;
+        }
+    }
+    XCTAssertNotNil(scroll);
+    [settings.view layoutIfNeeded];
+    XCTAssertGreaterThan(scroll.contentSize.height, scroll.bounds.size.height);
+    XCTAssertEqualWithAccuracy(scroll.contentSize.width, scroll.bounds.size.width, 1);
+
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithBounds:navigation.view.bounds];
+    UIImage *image = [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
+        [navigation.view.layer renderInContext:context.CGContext];
+    }];
+    XCTAttachment *attachment = [XCTAttachment attachmentWithImage:image];
+    attachment.name = @"Second display settings";
+    attachment.lifetime = XCTAttachmentLifetimeKeepAlways;
+    [self addAttachment:attachment];
+}
+
 - (void)testAspectFitVideoMapsTheDisplayedCenter {
     CGRect videoBounds = CGRectMake(0, 0, 1024, 768);
     CGRect displayedVideoRect = CGRectMake(0, 96, 1024, 576);

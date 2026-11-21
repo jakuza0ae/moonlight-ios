@@ -1,0 +1,56 @@
+name: iPad simulator checks
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ipad-streamdesk]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ipad-simulator-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Run input, display profile and layout tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          sim=$(xcrun simctl list devices available -j | python3 -c '
+          import json,sys
+          devices=json.load(sys.stdin)["devices"]
+          candidates=[d for runtime, entries in devices.items() if "iOS" in runtime for d in entries if d["name"].startswith("iPad")]
+          preferred=next((d for d in candidates if d["name"] == "iPad (A16)"), None)
+          if not candidates:
+              sys.exit("No iPad simulator available")
+          print((preferred or candidates[0])["udid"])
+          ')
+          xcodebuild test -project Moonlight.xcodeproj -scheme Moonlight \
+            -destination "platform=iOS Simulator,id=$sim" -parallel-testing-enabled NO \
+            -resultBundlePath "$RUNNER_TEMP/StreamDeskTests.xcresult" \
+            CODE_SIGNING_ALLOWED=NO IPHONEOS_DEPLOYMENT_TARGET=12.0
+
+      - name: Export test evidence
+        if: always()
+        run: |
+          if [ -d "$RUNNER_TEMP/StreamDeskTests.xcresult" ]; then
+            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/StreamDeskTests.xcresult" --output-path "$RUNNER_TEMP/attachments"
+            xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/StreamDeskTests.xcresult" > "$RUNNER_TEMP/attachments/test-summary.json"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: iPad-simulator-test-evidence
+          path: ${{ runner.temp }}/attachments/
