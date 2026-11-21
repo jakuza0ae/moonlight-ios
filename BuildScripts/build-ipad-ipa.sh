@@ -15,24 +15,15 @@ xcodebuild archive \
     IPHONEOS_DEPLOYMENT_TARGET=12.0 ARCHS=arm64 \
     PRODUCT_BUNDLE_IDENTIFIER=org.streamdesk.client \
     CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+    'WARNING_CFLAGS=$(inherited) -Werror=unguarded-availability-new' \
     -disableAutomaticPackageResolution
 
 app_dir="$work/StreamDesk.xcarchive/Products/Applications"
 apps=("$app_dir"/*.app)
 [[ ${#apps[@]} == 1 && -d ${apps[0]} ]]
 app=${apps[0]}
-plist="$app/Info.plist"
-executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$plist")
-[[ $(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$plist") == 12.0 ]]
-[[ $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist") == org.streamdesk.client ]]
-[[ $(xcrun lipo -archs "$app/$executable") == arm64 ]]
-xcrun vtool -show-build "$app/$executable" > "$work/build-version.txt"
-cat "$work/build-version.txt"
-awk '$1 == "minos" && $2 ~ /^12\.0(\.0)?$/ { found = 1 }
-     $1 == "version" && $2 ~ /^12\.0(\.0)?$/ { found = 1 }
-     END { exit !found }' "$work/build-version.txt"
-
 mkdir "$work/Payload"
 ditto "$app" "$work/Payload/${app##*/}"
-ditto -c -k --keepParent "$work/Payload" "$destination/StreamDesk-iOS12-unsigned.ipa"
-unzip -tq "$destination/StreamDesk-iOS12-unsigned.ipa"
+ditto -c -k --keepParent "$work/Payload" "$work/StreamDesk-iOS12-unsigned.ipa"
+python3 BuildScripts/verify-ipad-ipa.py "$work/StreamDesk-iOS12-unsigned.ipa"
+install -m644 "$work/StreamDesk-iOS12-unsigned.ipa" "$destination/"
