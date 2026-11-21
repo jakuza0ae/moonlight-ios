@@ -89,10 +89,40 @@ static TemporaryHost *shortcutHost(NSString *uuid, NSArray<NSString *> *appNames
 
 @end
 
+@interface LMComputerAddressPresenter : MainFrameViewController
+@property (nonatomic, strong) UIAlertController *addressAlert;
+@end
+
+@implementation LMComputerAddressPresenter
+
+- (UIViewController *)activeViewController {
+    return self;
+}
+
+- (void)presentViewController:(UIViewController *)controller animated:(BOOL)animated completion:(void (^)(void))completion {
+    self.addressAlert = (UIAlertController *)controller;
+}
+
+@end
+
 @interface TouchInputTests : XCTestCase
 @end
 
 @implementation TouchInputTests
+
+- (void)testAddComputerExplainsStreamDeskPortAndUsesAddressKeyboard {
+    LMComputerAddressPresenter *controller = [[LMComputerAddressPresenter alloc] initWithCollectionViewLayout:[[UICollectionViewFlowLayout alloc] init]];
+    [controller addHostClicked];
+
+    UIAlertController *alert = controller.addressAlert;
+    UITextField *address = alert.textFields.firstObject;
+    XCTAssertEqualObjects(alert.title, @"Add computer");
+    XCTAssertTrue([alert.message containsString:@"48189"]);
+    XCTAssertTrue([address.placeholder hasSuffix:@":48189"]);
+    XCTAssertEqual(address.keyboardType, UIKeyboardTypeURL);
+    XCTAssertEqual(address.autocorrectionType, UITextAutocorrectionTypeNo);
+    XCTAssertEqualObjects(alert.actions.lastObject.title, @"Add");
+}
 
 - (void)testComputerTileKeepsArtworkInsideCardAndClearOfCaption {
     TemporaryHost *host = [[TemporaryHost alloc] init];

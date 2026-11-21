@@ -613,10 +613,20 @@ static NSMutableSet* hostList;
 
 - (void) addHostClicked {
     Log(LOG_D, @"Clicked add host");
-    UIAlertController* alertController = [UIAlertController alertControllerWithTitle:@"Add Host Manually" message:@"If Moonlight doesn't find your local gaming PC automatically,\nenter the IP address of your PC" preferredStyle:UIAlertControllerStyleAlert];
+#if TARGET_OS_TV
+    NSString *title = @"Add Host Manually";
+    NSString *message = @"Enter the IP address of your computer.";
+#else
+    NSString *title = @"Add computer";
+    NSString *message = @"Enter your computer’s address. The StreamDesk host uses port 48189, for example 192.168.1.20:48189.";
+#endif
+    UIAlertController* alertController = [UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];
     [alertController addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-    [alertController addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction* action){
-        NSString* hostAddress = [((UITextField*)[[alertController textFields] objectAtIndex:0]).text trim];
+    [alertController addAction:[UIAlertAction actionWithTitle:@"Add" style:UIAlertActionStyleDefault handler:^(UIAlertAction* action){
+        NSString* hostAddress = [alertController.textFields.firstObject.text trim];
+        if (hostAddress.length == 0) {
+            return;
+        }
         [self showLoadingFrame:^{
             dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
                 [self->_discMan discoverHost:hostAddress withCallback:^(TemporaryHost* host, NSString* error){
@@ -630,13 +640,15 @@ static NSMutableSet* hostList;
                             }];
                         });
                     } else {
-                        unsigned int portTestResults = LiTestClientConnectivity(CONN_TEST_SERVER, 443,
-                                                                                ML_PORT_FLAG_TCP_47984 | ML_PORT_FLAG_TCP_47989);
-                        if (portTestResults != ML_TEST_RESULT_INCONCLUSIVE && portTestResults != 0) {
-                            error = [error stringByAppendingString:@"\n\nYour device's network connection is blocking Moonlight. Streaming may not work while connected to this network."];
+                        if ([Utils addressPortStringToPort:hostAddress] == 47989) {
+                            unsigned int portTestResults = LiTestClientConnectivity(CONN_TEST_SERVER, 443,
+                                                                                    ML_PORT_FLAG_TCP_47984 | ML_PORT_FLAG_TCP_47989);
+                            if (portTestResults != ML_TEST_RESULT_INCONCLUSIVE && portTestResults != 0) {
+                                error = [error stringByAppendingString:@"\n\nYour device's network connection is blocking Moonlight. Streaming may not work while connected to this network."];
+                            }
                         }
                         
-                        UIAlertController* hostNotFoundAlert = [UIAlertController alertControllerWithTitle:@"Add Host Manually" message:error preferredStyle:UIAlertControllerStyleAlert];
+                        UIAlertController* hostNotFoundAlert = [UIAlertController alertControllerWithTitle:title message:error preferredStyle:UIAlertControllerStyleAlert];
                         [Utils addHelpOptionToDialog:hostNotFoundAlert];
                         [hostNotFoundAlert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
                         dispatch_async(dispatch_get_main_queue(), ^{
@@ -649,7 +661,15 @@ static NSMutableSet* hostList;
             });
         }];
     }]];
-    [alertController addTextFieldWithConfigurationHandler:nil];
+    [alertController addTextFieldWithConfigurationHandler:^(UITextField *field) {
+        field.accessibilityLabel = @"Computer address";
+        field.autocapitalizationType = UITextAutocapitalizationTypeNone;
+        field.autocorrectionType = UITextAutocorrectionTypeNo;
+#if !TARGET_OS_TV
+        field.placeholder = @"192.168.1.20:48189";
+        field.keyboardType = UIKeyboardTypeURL;
+#endif
+    }];
     [[self activeViewController] presentViewController:alertController animated:YES completion:nil];
 }
 
