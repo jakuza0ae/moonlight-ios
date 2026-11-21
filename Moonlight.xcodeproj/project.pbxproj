@@ -1348,7 +1348,9 @@
 					/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include,
 					"$(PROJECT_DIR)/moonlight-common/moonlight-common-c/src",
 					"$(SDKROOT)/usr/include/libxml2/**",
-					"$(PROJECT_DIR)/libs/**",
+					"$(PROJECT_DIR)/libs/FFmpeg/include",
+					"$(PROJECT_DIR)/libs/SDL2/include",
+					"$(PROJECT_DIR)/libs/opus/include/opus",
 				);
 				INFOPLIST_FILE = "Limelight/Limelight-Info.plist";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.games";
@@ -1398,7 +1400,9 @@
 					/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include,
 					"$(PROJECT_DIR)/moonlight-common/moonlight-common-c/src",
 					"$(SDKROOT)/usr/include/libxml2/**",
-					"$(PROJECT_DIR)/libs/**",
+					"$(PROJECT_DIR)/libs/FFmpeg/include",
+					"$(PROJECT_DIR)/libs/SDL2/include",
+					"$(PROJECT_DIR)/libs/opus/include/opus",
 				);
 				INFOPLIST_FILE = "Limelight/Limelight-Info.plist";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.games";
