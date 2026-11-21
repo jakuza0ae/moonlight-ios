@@ -9,6 +9,8 @@
 #import "SettingsViewController.h"
 #import "TemporarySettings.h"
 #import "DataManager.h"
+#import "HttpManager.h"
+#import "ServerInfoResponse.h"
 #import "../Stream/StreamConfiguration.h"
 
 #import <VideoToolbox/VideoToolbox.h>
@@ -28,6 +30,7 @@
     UIStackView *_settingsGroup;
     UILabel *_streamSummary;
     UIButton *_hostButton;
+    UIButton *_checkLinkButton;
     UISegmentedControl *_modeSelector;
     UISegmentedControl *_resolutionSelector;
     UISwitch *_experimental1080Switch;
@@ -125,9 +128,9 @@ static UIColor *SDAccent(void) {
     [self addControl:row];
 }
 
-- (id)hostWithUUID:(NSString *)hostUUID {
-    for (id host in self.hosts) {
-        if ([[host valueForKey:@"uuid"] isEqualToString:hostUUID]) {
+- (TemporaryHost *)hostWithUUID:(NSString *)hostUUID {
+    for (TemporaryHost *host in self.hosts) {
+        if ([host.uuid isEqualToString:hostUUID]) {
             return host;
         }
     }
@@ -135,9 +138,10 @@ static UIColor *SDAccent(void) {
 }
 
 - (void)updateHostButtonTitle {
-    id host = [self hostWithUUID:self.selectedHostUUID];
-    NSString *title = host == nil ? @"Choose host" : [NSString stringWithFormat:@"%@", [host valueForKey:@"name"]];
+    TemporaryHost *host = [self hostWithUUID:self.selectedHostUUID];
+    NSString *title = host.name ?: @"Choose computer";
     [_hostButton setTitle:title forState:UIControlStateNormal];
+    _checkLinkButton.enabled = host != nil;
 }
 
 - (void)loadProfileForSelectedHost {
@@ -288,6 +292,53 @@ static UIColor *SDAccent(void) {
     [self presentViewController:picker animated:YES completion:nil];
 }
 
+- (void)checkLink:(UIButton *)sender {
+    TemporaryHost *host = [self hostWithUUID:self.selectedHostUUID];
+    NSString *address = host.activeAddress ?: host.localAddress ?: host.address ?: host.externalAddress ?: host.ipv6Address;
+    if (address.length == 0) {
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"No computer address"
+            message:@"Open the computer in StreamDesk to discover its current address."
+            preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"Done" style:UIAlertActionStyleCancel handler:nil]];
+        [self presentViewController:alert animated:YES completion:nil];
+        return;
+    }
+
+    sender.enabled = NO;
+    NSString *uuid = host.uuid;
+    [sender setTitle:@"Checking…" forState:UIControlStateNormal];
+    __weak LMSecondMonitorSettingsViewController *weakSelf = self;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        HttpManager *manager = [[HttpManager alloc] initWithAddress:address httpsPort:host.httpsPort serverCert:nil];
+        NSUInteger replies = 0;
+        double totalMs = 0;
+        for (NSUInteger attempt = 0; attempt < 3; ++attempt) {
+            ServerInfoResponse *response = [[ServerInfoResponse alloc] init];
+            NSURLRequest *request = [manager newHttpServerInfoRequest:true];
+            CFTimeInterval start = CACurrentMediaTime();
+            [manager executeRequestSynchronously:[HttpRequest requestForResponse:response withUrlRequest:request]];
+            if (response.isStatusOk) {
+                totalMs += (CACurrentMediaTime() - start) * 1000;
+                ++replies;
+            }
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            LMSecondMonitorSettingsViewController *panel = weakSelf;
+            [sender setTitle:@"Check connection" forState:UIControlStateNormal];
+            sender.enabled = panel.selectedHostUUID.length != 0;
+            if (panel.viewIfLoaded.window == nil || ![panel.selectedHostUUID isEqualToString:uuid] || panel.presentedViewController != nil) {
+                return;
+            }
+            NSString *message = replies == 0 ? @"The computer did not respond. Check that Sunshine is running at the saved address." :
+                [NSString stringWithFormat:@"%lu of 3 replies · %.0f ms average HTTP response", (unsigned long)replies, totalMs / replies];
+            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Connection check"
+                message:message preferredStyle:UIAlertControllerStyleAlert];
+            [alert addAction:[UIAlertAction actionWithTitle:@"Done" style:UIAlertActionStyleCancel handler:nil]];
+            [panel presentViewController:alert animated:YES completion:nil];
+        });
+    });
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"Second display";
@@ -410,6 +461,12 @@ static UIColor *SDAccent(void) {
     _diagnosticsSwitch = [[UISwitch alloc] init];
     _diagnosticsSwitch.on = [[NSUserDefaults standardUserDefaults] boolForKey:@"Moonlight.SecondMonitor.Diagnostics"];
     [self addSwitch:_diagnosticsSwitch title:@"Show stream statistics"];
+    _checkLinkButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    [_checkLinkButton setTitle:@"Check connection" forState:UIControlStateNormal];
+    [_checkLinkButton addTarget:self action:@selector(checkLink:) forControlEvents:UIControlEventTouchUpInside];
+    [_checkLinkButton.heightAnchor constraintGreaterThanOrEqualToConstant:44].active = YES;
+    [self addControl:_checkLinkButton];
+    [self updateHostButtonTitle];
 }
 
 - (void)cancelSettings:(id)sender {

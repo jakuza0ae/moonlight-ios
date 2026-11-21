@@ -9,6 +9,7 @@
 #import "StreamView.h"
 #import "StreamManager.h"
 #import "SettingsViewController.h"
+#import "TemporaryHost.h"
 
 @interface LMTrackingStreamView : StreamView
 @property (nonatomic) BOOL cancelledOnMainThread;
@@ -41,8 +42,11 @@
 
 - (void)testSecondDisplayFormSheetLayout {
     LMStreamProfile *profile = [LMStreamProfile defaultSecondMonitorProfile];
+    TemporaryHost *host = [[TemporaryHost alloc] init];
+    host.name = @"Workstation";
+    host.uuid = @"preview-host";
     UINavigationController *navigation = LMCreateSecondMonitorSettingsNavigationController(
-        @[@{@"name": @"Workstation", @"uuid": @"preview-host"}], @"preview-host", profile, NO, nil);
+        @[host], host.uuid, profile, NO, nil);
     navigation.view.frame = CGRectMake(0, 0, 540, 660);
     [navigation.view setNeedsLayout];
     [navigation.view layoutIfNeeded];
