@@ -30,6 +30,7 @@
 
 #if !TARGET_OS_TV
 #import "SettingsViewController.h"
+#import "StreamDeskUsb.h"
 #else
 #import <sys/utsname.h>
 #endif
@@ -99,6 +100,10 @@ TemporaryApp *LMSecondDisplayShortcutApp(NSArray<TemporaryHost *> *hosts, NSStri
     NSArray* _sortedAppList;
     NSCache* _boxArtCache;
     bool _background;
+#if !TARGET_OS_TV
+    SDUsbListener *_usbListener;
+    NSTimer *_usbStatusTimer;
+#endif
 #if TARGET_OS_TV
     UITapGestureRecognizer* _menuRecognizer;
 #endif
@@ -1033,6 +1038,122 @@ static NSMutableSet* hostList;
 }
 
 #if !TARGET_OS_TV
+- (void)stopUSBConnection {
+    [_usbStatusTimer invalidate];
+    _usbStatusTimer = nil;
+    SDUsbStop(_usbListener);
+    _usbListener = NULL;
+}
+
+- (void)usbApplicationDidEnterBackground:(NSNotification *)notification {
+    if (_usbStatusTimer != nil) {
+        [[self activeViewController] dismissViewControllerAnimated:NO completion:nil];
+    }
+    [self stopUSBConnection];
+}
+
+- (void)dealloc {
+    [self stopUSBConnection];
+}
+
+- (void)waitForUSBConnectionForApp:(TemporaryApp *)app {
+    [self stopUSBConnection];
+    _usbListener = SDUsbStart(41589);
+    if (_usbListener == NULL) {
+        [self presentStreamPreparationError:[NSError errorWithDomain:@"StreamDeskUSB" code:1
+            userInfo:@{NSLocalizedDescriptionKey: @"Could not open the USB listener."}]];
+        return;
+    }
+
+    NSString *waiting = @"Connect your iPad with Lightning, then run streamdesk-host usb on your computer.";
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"USB"
+        message:waiting preferredStyle:UIAlertControllerStyleAlert];
+    __weak typeof(self) weakSelf = self;
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel
+        handler:^(UIAlertAction *action) {
+            [weakSelf stopUSBConnection];
+        }]];
+    UIAlertAction *connect = [UIAlertAction actionWithTitle:@"Open second display"
+        style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+            typeof(self) controller = weakSelf;
+            if (controller == nil) {
+                return;
+            }
+            [controller->_usbStatusTimer invalidate];
+            controller->_usbStatusTimer = nil;
+            uint16_t port = SDUsbRoutePort(controller->_usbListener);
+            if (port == 0) {
+                [controller stopUSBConnection];
+                [controller presentStreamPreparationError:[NSError errorWithDomain:@"StreamDeskUSB" code:2
+                    userInfo:@{NSLocalizedDescriptionKey: @"The USB connection was lost. Reconnect the cable and try again."}]];
+                return;
+            }
+            if (![controller prepareToStreamApp:app]) {
+                [controller stopUSBConnection];
+                return;
+            }
+            controller->_streamConfig.host = [NSString stringWithFormat:@"127.0.0.1:%hu", port];
+            controller->_streamConfig.httpsPort = port - 5;
+            controller->_streamConfig.requireMatchingAppOnResume = YES;
+            [controller->_appManager stopRetrieving];
+            [controller performSegueWithIdentifier:@"createStreamFrame" sender:nil];
+        }];
+    connect.enabled = NO;
+    [alert addAction:connect];
+    __weak UIAlertController *weakAlert = alert;
+    __weak UIAlertAction *weakConnect = connect;
+    _usbStatusTimer = [NSTimer scheduledTimerWithTimeInterval:0.25 repeats:YES block:^(NSTimer *timer) {
+        typeof(self) controller = weakSelf;
+        UIAlertController *visibleAlert = weakAlert;
+        if (controller == nil || visibleAlert == nil) {
+            [timer invalidate];
+            return;
+        }
+        BOOL ready = SDUsbRoutePort(controller->_usbListener) != 0;
+        if (weakConnect.enabled != ready) {
+            weakConnect.enabled = ready;
+            visibleAlert.message = ready ? @"USB connected." : waiting;
+        }
+    }];
+    [[self activeViewController] presentViewController:alert animated:YES completion:nil];
+}
+
+- (TemporaryApp *)pairedSecondDisplayApp {
+    NSArray<TemporaryHost *> *hosts;
+    @synchronized (hostList) {
+        hosts = hostList.allObjects;
+    }
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    NSString *uuid = _selectedHost.uuid ?: [defaults stringForKey:LMSecondDisplayShortcutHostKey];
+    return LMSecondDisplayShortcutApp(hosts, uuid);
+}
+
+- (void)selectSecondDisplayConnection:(id)sender {
+    TemporaryApp *app = [self pairedSecondDisplayApp];
+    if (app == nil) {
+        [self presentStreamPreparationError:[NSError errorWithDomain:@"StreamDeskUSB" code:3
+            userInfo:@{NSLocalizedDescriptionKey: @"Pair with the StreamDesk computer and open its app list first."}]];
+        return;
+    }
+    UIAlertController *choice = [UIAlertController alertControllerWithTitle:@"Second display"
+        message:@"Choose how to connect." preferredStyle:UIAlertControllerStyleAlert];
+    [choice addAction:[UIAlertAction actionWithTitle:@"Wi-Fi" style:UIAlertActionStyleDefault
+        handler:^(UIAlertAction *action) {
+            [self stopUSBConnection];
+            if ([self prepareToStreamApp:app]) {
+                self->_streamConfig.requireMatchingAppOnResume = YES;
+                [self->_appManager stopRetrieving];
+                [self performSegueWithIdentifier:@"createStreamFrame" sender:nil];
+            }
+        }]];
+    [choice addAction:[UIAlertAction actionWithTitle:@"USB" style:UIAlertActionStyleDefault
+        handler:^(UIAlertAction *action) {
+            [self waitForUSBConnectionForApp:app];
+        }]];
+    [choice addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [[self activeViewController] presentViewController:choice animated:YES completion:nil];
+}
+
 - (void)openSecondDisplaySettings:(id)sender {
     LMPresentSecondDisplaySettings([self activeViewController], _selectedHost.uuid);
 }
@@ -1117,7 +1238,9 @@ static NSMutableSet* hostList;
                                                                  target:self
                                                                  action:@selector(openSecondDisplaySettings:)];
         NSArray *items = self.navigationItem.rightBarButtonItems ?: @[];
-        self.navigationItem.rightBarButtonItems = [items arrayByAddingObject:display];
+        UIBarButtonItem *connection = [[UIBarButtonItem alloc] initWithTitle:@"Connect"
+            style:UIBarButtonItemStylePlain target:self action:@selector(selectSecondDisplayConnection:)];
+        self.navigationItem.rightBarButtonItems = [items arrayByAddingObjectsFromArray:@[display, connection]];
     }
 
     // Set the host name button action. When it's tapped, it'll show the host selection view.
@@ -1195,6 +1318,10 @@ static NSMutableSet* hostList;
                                              selector:@selector(secondDisplayShortcutReceived:)
                                                  name:LMSecondDisplayShortcutNotification
                                                object:UIApplication.sharedApplication.delegate];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(usbApplicationDidEnterBackground:)
+                                                 name:UIApplicationDidEnterBackgroundNotification
+                                               object:nil];
 #endif
     _discMan = [[DiscoveryManager alloc] initWithHosts:[hostList allObjects] andCallback:self];
         

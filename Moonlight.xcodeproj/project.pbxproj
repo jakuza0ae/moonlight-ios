@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0EE5DA5A2F61000900000003 /* StreamDeskUsb.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0EE5DA5A2F61000900000002 /* StreamDeskUsb.cpp */; };
 		A5C7E0012F00000100000001 /* TouchInputTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A5C7E0002F00000100000001 /* TouchInputTests.m */; };
 		A5C7E0032F00000100000003 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A5C7E0022F00000100000002 /* XCTest.framework */; };
 		693B3A9B218638CD00982F7B /* Settings.bundle in Resources */ = {isa = PBXBuildFile; fileRef = 693B3A9A218638CD00982F7B /* Settings.bundle */; };
@@ -179,6 +180,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		0EE5DA5A2F61000900000001 /* StreamDeskUsb.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = StreamDeskUsb.h; sourceTree = "<group>"; };
+		0EE5DA5A2F61000900000002 /* StreamDeskUsb.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = StreamDeskUsb.cpp; sourceTree = "<group>"; };
 		A5C7E00F2F0000010000000F /* InputMode.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = InputMode.h; sourceTree = "<group>"; };
 		A5C7E0002F00000100000001 /* TouchInputTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = TouchInputTests.m; sourceTree = "<group>"; };
 		A5C7E0022F00000100000002 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
@@ -569,6 +572,8 @@
 				FB4678FE1A565DAC00377732 /* WakeOnLanManager.m */,
 				DC1F5A05206436B10037755F /* ConnectionHelper.h */,
 				DC1F5A06206436B20037755F /* ConnectionHelper.m */,
+				0EE5DA5A2F61000900000001 /* StreamDeskUsb.h */,
+				0EE5DA5A2F61000900000002 /* StreamDeskUsb.cpp */,
 			);
 			path = Network;
 			sourceTree = "<group>";
@@ -990,6 +995,7 @@
 				98D585701C0ED0E800F6CC00 /* TemporarySettings.m in Sources */,
 				FB89462819F646E200339C8A /* CryptoManager.m in Sources */,
 				DC1F5A07206436B20037755F /* ConnectionHelper.m in Sources */,
+				0EE5DA5A2F61000900000003 /* StreamDeskUsb.cpp in Sources */,
 				FB89462E19F646E200339C8A /* PairManager.m in Sources */,
 				FB9AFD371A7E02DB00872C98 /* HttpRequest.m in Sources */,
 				FB4678ED1A50C40900377732 /* OnScreenControls.m in Sources */,
@@ -1333,7 +1339,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = DM46QST4M7;
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "Limelight/Limelight-Prefix.pch";
@@ -1383,7 +1389,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = DM46QST4M7;
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "Limelight/Limelight-Prefix.pch";
