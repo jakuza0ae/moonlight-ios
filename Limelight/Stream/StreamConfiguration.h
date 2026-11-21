@@ -79,6 +79,7 @@ FOUNDATION_EXPORT BOOL LMShouldRetryStreamFailure(BOOL reconnectEnabled,
 @property (nonatomic) LMInputMode inputMode;
 @property (nonatomic) BOOL reconnectEnabled;
 @property (nonatomic) BOOL hdrEnabled;
+@property (nonatomic) BOOL framePacing;
 @property (nonatomic) BOOL experimental1080pEnabled;
 
 + (instancetype)defaultSecondMonitorProfile;

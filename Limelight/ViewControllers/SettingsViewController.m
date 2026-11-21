@@ -37,6 +37,7 @@
     UISegmentedControl *_audioSelector;
     UISegmentedControl *_inputModeSelector;
     UISwitch *_reconnectSwitch;
+    UISwitch *_framePacingSwitch;
     UISwitch *_diagnosticsSwitch;
     NSArray<NSValue *> *_supportedResolutions;
     NSArray<NSNumber *> *_supportedFrameRates;
@@ -152,6 +153,7 @@ static UIColor *SDAccent(void) {
     _audioSelector.selectedSegmentIndex = MIN(self.profile.audioPolicy, 2);
     _inputModeSelector.selectedSegmentIndex = self.profile.inputMode;
     _reconnectSwitch.on = self.profile.reconnectEnabled;
+    _framePacingSwitch.on = self.profile.framePacing;
     _bitrateSlider.value = MAX(_bitrateSlider.minimumValue, MIN(_bitrateSlider.maximumValue, self.profile.bitrate));
     [self updateBitrateLabel];
     if (_experimental1080Switch != nil) {
@@ -229,7 +231,11 @@ static UIColor *SDAccent(void) {
 }
 
 - (void)resolutionChanged:(UISegmentedControl *)sender {
-    CGSize resolution = _supportedResolutions[sender.selectedSegmentIndex].CGSizeValue;
+    NSInteger index = sender.selectedSegmentIndex;
+    if (index < 0 || index >= (NSInteger)_supportedResolutions.count) {
+        return;
+    }
+    CGSize resolution = _supportedResolutions[index].CGSizeValue;
     if (CGSizeEqualToSize(resolution, CGSizeMake(1024, 768))) {
         _bitrateSlider.value = 4000;
     } else if (CGSizeEqualToSize(resolution, CGSizeMake(1280, 960))) {
@@ -394,6 +400,10 @@ static UIColor *SDAccent(void) {
     _inputModeSelector.accessibilityLabel = @"Input mode";
     [self addControl:[self detailLabel:@"Use mouse mode if the host treats touches as clicks."]];
     [self addSectionTitle:@"Connection"];
+    _framePacingSwitch = [[UISwitch alloc] init];
+    _framePacingSwitch.on = self.profile.framePacing;
+    [self addSwitch:_framePacingSwitch title:@"Smooth uneven frame delivery"];
+    [self addControl:[self detailLabel:@"Can add one frame of latency. Leave off for the quickest response."]];
     _reconnectSwitch = [[UISwitch alloc] init];
     _reconnectSwitch.on = self.profile.reconnectEnabled;
     [self addSwitch:_reconnectSwitch title:@"Reconnect after a drop"];
@@ -415,6 +425,7 @@ static UIColor *SDAccent(void) {
     profile.audioPolicy = (LMAudioPolicy)_audioSelector.selectedSegmentIndex;
     profile.inputMode = (LMInputMode)_inputModeSelector.selectedSegmentIndex;
     profile.reconnectEnabled = _reconnectSwitch.isOn;
+    profile.framePacing = _framePacingSwitch.isOn;
     profile.codec = LMStreamCodecH264;
     profile.hdrEnabled = NO;
     if (_experimental1080Switch != nil) {

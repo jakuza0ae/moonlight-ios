@@ -314,9 +314,9 @@
                                          error:&error]);
     XCTAssertNil(error);
     XCTAssertEqual(configuration.width, 1280);
-    XCTAssertEqual(configuration.height, 720);
+    XCTAssertEqual(configuration.height, 960);
     XCTAssertEqual(configuration.frameRate, 30);
-    XCTAssertEqual(configuration.bitRate, 5000);
+    XCTAssertEqual(configuration.bitRate, 6000);
     XCTAssertEqual(configuration.supportedVideoFormats, VIDEO_FORMAT_H264);
     XCTAssertEqual(configuration.inputMode, LMInputModeNativeTouch);
     XCTAssertEqual(configuration.gamepadMask, 0);
@@ -326,6 +326,7 @@
 - (void)testStoredProfileDictionaryRoundTripsWithoutChangingMode {
     LMStreamProfile *profile = [LMStreamProfile defaultSecondMonitorProfile];
     profile.bitrate = 7000;
+    profile.framePacing = YES;
     profile.experimental1080pEnabled = YES;
     profile.resolution = CGSizeMake(1920, 1080);
 
@@ -334,6 +335,14 @@
     XCTAssertEqualObjects(roundTripped, profile);
     XCTAssertEqual(roundTripped.mode, LMStreamModeSecondMonitor);
     XCTAssertEqual(roundTripped.bitrate, 7000);
+    XCTAssertTrue(roundTripped.framePacing);
+
+    StreamConfiguration *configuration = [[StreamConfiguration alloc] init];
+    XCTAssertTrue([configuration applyProfile:roundTripped forCapabilityProfile:LMDeviceCapabilityProfileIPadAir error:nil]);
+    XCTAssertTrue(configuration.useFramePacing);
+    NSMutableDictionary *previousSettings = [profile.dictionaryRepresentation mutableCopy];
+    [previousSettings removeObjectForKey:@"framePacing"];
+    XCTAssertFalse([LMStreamProfile profileWithDictionary:previousSettings].framePacing);
 }
 
 - (void)testProfileStoreRoundTripsByHostAndProfileName {

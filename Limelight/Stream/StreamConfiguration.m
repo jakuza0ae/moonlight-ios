@@ -111,6 +111,7 @@ BOOL LMShouldRetryStreamFailure(BOOL reconnectEnabled, BOOL stopping) {
     profile.inputMode = [dictionary[@"inputMode"] integerValue];
     profile.reconnectEnabled = [dictionary[@"reconnectEnabled"] boolValue];
     profile.hdrEnabled = [dictionary[@"hdrEnabled"] boolValue];
+    profile.framePacing = [dictionary[@"framePacing"] boolValue];
     profile.experimental1080pEnabled = [dictionary[@"experimental1080pEnabled"] boolValue];
     return profile;
 }
@@ -127,6 +128,7 @@ BOOL LMShouldRetryStreamFailure(BOOL reconnectEnabled, BOOL stopping) {
         @"inputMode": @(self.inputMode),
         @"reconnectEnabled": @(self.reconnectEnabled),
         @"hdrEnabled": @(self.hdrEnabled),
+        @"framePacing": @(self.framePacing),
         @"experimental1080pEnabled": @(self.experimental1080pEnabled),
     };
 }
@@ -142,6 +144,7 @@ BOOL LMShouldRetryStreamFailure(BOOL reconnectEnabled, BOOL stopping) {
     copy.inputMode = self.inputMode;
     copy.reconnectEnabled = self.reconnectEnabled;
     copy.hdrEnabled = self.hdrEnabled;
+    copy.framePacing = self.framePacing;
     copy.experimental1080pEnabled = self.experimental1080pEnabled;
     return copy;
 }
@@ -164,6 +167,7 @@ BOOL LMShouldRetryStreamFailure(BOOL reconnectEnabled, BOOL stopping) {
         self.inputMode == other.inputMode &&
         self.reconnectEnabled == other.reconnectEnabled &&
         self.hdrEnabled == other.hdrEnabled &&
+        self.framePacing == other.framePacing &&
         self.experimental1080pEnabled == other.experimental1080pEnabled;
 }
 
@@ -330,7 +334,7 @@ BOOL LMShouldRetryStreamFailure(BOOL reconnectEnabled, BOOL stopping) {
 - (instancetype)init {
     self = [super init];
     if (self != nil) {
-        _inputMode = LMInputModeNativeTouch;
+        self.inputMode = LMInputModeNativeTouch;
     }
     return self;
 }
@@ -394,6 +398,7 @@ forCapabilityProfile:(LMDeviceCapabilityProfile)capabilityProfile
     self.height = (int)profile.resolution.height;
     self.frameRate = (int)profile.fps;
     self.bitRate = (int)profile.bitrate;
+    self.useFramePacing = profile.framePacing;
     self.inputMode = profile.inputMode;
     self.playAudioOnPC = profile.audioPolicy == LMAudioPolicyHost;
     self.audioConfiguration = AUDIO_CONFIGURATION_STEREO;
