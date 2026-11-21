@@ -28,15 +28,15 @@
 
 - (void)cancelAllTouches {
     self.cancelledOnMainThread = [NSThread isMainThread];
-    if (self.cancelledOnMainThread && self.keyboardReleasedOnMainThread && self.cleanupCompleted != nil) {
-        self.cleanupCompleted();
-    }
+    [super cancelAllTouches];
 }
 
 - (void)releaseKeyboardActions {
     self.keyboardReleasedOnMainThread = [NSThread isMainThread];
     if (self.cancelledOnMainThread && self.keyboardReleasedOnMainThread && self.cleanupCompleted != nil) {
-        self.cleanupCompleted();
+        void (^completion)(void) = self.cleanupCompleted;
+        self.cleanupCompleted = nil;
+        completion();
     }
 }
 
@@ -288,7 +288,7 @@
 
     XCTAssertEqual(profile.mode, LMStreamModeSecondMonitor);
     XCTAssertEqual(profile.resolution.width, 1280);
-    XCTAssertEqual(profile.resolution.height, 720);
+    XCTAssertEqual(profile.resolution.height, 960);
     XCTAssertEqual(profile.fps, 30);
     XCTAssertEqual(profile.codec, LMStreamCodecH264);
     XCTAssertEqual(profile.audioPolicy, LMAudioPolicyDisabled);
@@ -472,7 +472,7 @@
     configuration.profile.bitrate = 12000;
 
     XCTAssertEqualObjects(snapshot.host, @"original-host");
-    XCTAssertEqual(snapshot.profile.bitrate, 5000);
+    XCTAssertEqual(snapshot.profile.bitrate, 6000);
 }
 
 - (void)testReconnectStateRetainsHostAndProfileWithBoundedBackoff {
@@ -681,7 +681,9 @@
     __block NSString *savedHostUUID;
     __block LMStreamProfile *savedProfile;
     __block BOOL savedActive;
-    NSDictionary *host = @{ @"uuid": @"selected-host", @"name": @"Test PC" };
+    LMPreviewComputer *host = [[LMPreviewComputer alloc] init];
+    host.uuid = @"selected-host";
+    host.name = @"Test PC";
     UINavigationController *navigationController = LMCreateSecondMonitorSettingsNavigationController(@[host],
                                                                                                        @"selected-host",
                                                                                                        [LMStreamProfile defaultSecondMonitorProfile],

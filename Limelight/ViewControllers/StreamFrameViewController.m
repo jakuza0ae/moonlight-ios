@@ -79,7 +79,6 @@
     }
 
     [_streamView cancelAllTouches];
-    [_streamView releaseKeyboardActions];
 }
 
 - (void)recordDiagnosticError:(NSString *)error {

@@ -20,7 +20,7 @@
 @property (nonatomic, copy) NSString *selectedHostUUID;
 @property (nonatomic, copy) NSArray *hosts;
 @property (nonatomic, copy) LMStreamProfile *profile;
-@property (nonatomic) BOOL active;
+@property (nonatomic, copy) NSString *allAppsHostUUID;
 @property (nonatomic, copy) LMSecondMonitorSettingsCompletion completion;
 @end
 
@@ -31,6 +31,7 @@
     UILabel *_streamSummary;
     UIButton *_hostButton;
     UIButton *_checkLinkButton;
+    BOOL _checkingLink;
     UISegmentedControl *_modeSelector;
     UISegmentedControl *_resolutionSelector;
     UISwitch *_experimental1080Switch;
@@ -141,7 +142,7 @@ static UIColor *SDAccent(void) {
     TemporaryHost *host = [self hostWithUUID:self.selectedHostUUID];
     NSString *title = host.name ?: @"Choose computer";
     [_hostButton setTitle:title forState:UIControlStateNormal];
-    _checkLinkButton.enabled = host != nil;
+    _checkLinkButton.enabled = host != nil && !_checkingLink;
 }
 
 - (void)loadProfileForSelectedHost {
@@ -152,7 +153,7 @@ static UIColor *SDAccent(void) {
         self.profile = [LMStreamProfileStore loadProfileForHost:self.selectedHostUUID profileName:@"second-monitor"] ?: [LMStreamProfile defaultSecondMonitorProfile];
     }
 
-    _modeSelector.selectedSegmentIndex = self.active ? 1 : 0;
+    _modeSelector.selectedSegmentIndex = [self.allAppsHostUUID isEqualToString:self.selectedHostUUID] ? 1 : 0;
     _fpsSelector.selectedSegmentIndex = [self selectedIndexForFrameRate:self.profile.fps];
     _audioSelector.selectedSegmentIndex = MIN(self.profile.audioPolicy, 2);
     _inputModeSelector.selectedSegmentIndex = self.profile.inputMode;
@@ -226,8 +227,9 @@ static UIColor *SDAccent(void) {
 
 - (void)updateBitrateLabel {
     float bitrate = roundf(_bitrateSlider.value / 500.0) / 2.0;
-    _bitrateLabel.text = [NSString stringWithFormat:@"%.1f Mb/s", bitrate];
-    _bitrateSlider.accessibilityValue = _bitrateLabel.text;
+    NSString *value = [NSString stringWithFormat:@"%.1f Mb/s", bitrate];
+    _bitrateLabel.text = [NSString stringWithFormat:@"Video bitrate  ·  %@", value];
+    _bitrateSlider.accessibilityValue = value;
 }
 
 - (void)bitrateChanged:(UISlider *)sender {
@@ -273,9 +275,9 @@ static UIColor *SDAccent(void) {
     UIAlertController *picker = [UIAlertController alertControllerWithTitle:@"Choose Host"
                                                                        message:@"Select the host that owns this second-monitor profile."
                                                                 preferredStyle:UIAlertControllerStyleActionSheet];
-    for (id host in self.hosts) {
-        NSString *hostUUID = [host valueForKey:@"uuid"];
-        NSString *hostName = [host valueForKey:@"name"] ?: hostUUID;
+    for (TemporaryHost *host in self.hosts) {
+        NSString *hostUUID = host.uuid;
+        NSString *hostName = host.name ?: hostUUID;
         [picker addAction:[UIAlertAction actionWithTitle:hostName
                                                    style:UIAlertActionStyleDefault
                                                  handler:^(UIAlertAction *action) {
@@ -293,6 +295,9 @@ static UIColor *SDAccent(void) {
 }
 
 - (void)checkLink:(UIButton *)sender {
+    if (_checkingLink) {
+        return;
+    }
     TemporaryHost *host = [self hostWithUUID:self.selectedHostUUID];
     NSString *address = host.activeAddress ?: host.localAddress ?: host.address ?: host.externalAddress ?: host.ipv6Address;
     if (address.length == 0) {
@@ -304,6 +309,7 @@ static UIColor *SDAccent(void) {
         return;
     }
 
+    _checkingLink = YES;
     sender.enabled = NO;
     NSString *uuid = host.uuid;
     [sender setTitle:@"Checking…" forState:UIControlStateNormal];
@@ -324,8 +330,12 @@ static UIColor *SDAccent(void) {
         }
         dispatch_async(dispatch_get_main_queue(), ^{
             LMSecondMonitorSettingsViewController *panel = weakSelf;
+            if (panel == nil) {
+                return;
+            }
+            panel->_checkingLink = NO;
             [sender setTitle:@"Check connection" forState:UIControlStateNormal];
-            sender.enabled = panel.selectedHostUUID.length != 0;
+            [panel updateHostButtonTitle];
             if (panel.viewIfLoaded.window == nil || ![panel.selectedHostUUID isEqualToString:uuid] || panel.presentedViewController != nil) {
                 return;
             }
@@ -401,7 +411,7 @@ static UIColor *SDAccent(void) {
     [self addControl:_hostButton];
     [self updateHostButtonTitle];
     _modeSelector = [[UISegmentedControl alloc] initWithItems:@[@"Display app only", @"All apps on this computer"]];
-    _modeSelector.selectedSegmentIndex = self.active ? 1 : 0;
+    _modeSelector.selectedSegmentIndex = [self.allAppsHostUUID isEqualToString:self.selectedHostUUID] ? 1 : 0;
     [self addControl:_modeSelector];
 
     [self addSectionTitle:@"Picture"];
@@ -532,7 +542,7 @@ UINavigationController *LMCreateSecondMonitorSettingsNavigationController(NSArra
     panel.hosts = hosts ?: @[];
     panel.selectedHostUUID = selectedHostUUID;
     panel.profile = profile ?: [LMStreamProfile defaultSecondMonitorProfile];
-    panel.active = active;
+    panel.allAppsHostUUID = active ? selectedHostUUID : nil;
     panel.completion = completion;
 
     UINavigationController *navigationController = [[UINavigationController alloc] initWithRootViewController:panel];
@@ -540,6 +550,14 @@ UINavigationController *LMCreateSecondMonitorSettingsNavigationController(NSArra
     navigationController.navigationBar.translucent = NO;
     navigationController.navigationBar.barTintColor = [UIColor colorWithWhite:0.07 alpha:1];
     navigationController.navigationBar.tintColor = SDAccent();
+    if (@available(iOS 13.0, *)) {
+        UINavigationBarAppearance *appearance = [[UINavigationBarAppearance alloc] init];
+        [appearance configureWithOpaqueBackground];
+        appearance.backgroundColor = [UIColor colorWithWhite:0.07 alpha:1];
+        appearance.titleTextAttributes = @{NSForegroundColorAttributeName: UIColor.whiteColor};
+        navigationController.navigationBar.standardAppearance = appearance;
+        navigationController.navigationBar.scrollEdgeAppearance = appearance;
+    }
     return navigationController;
 }
 
@@ -568,6 +586,8 @@ void LMPresentSecondDisplaySettings(UIViewController *presenter, NSString *prefe
             }
             [defaults setBool:diagnostics forKey:@"Moonlight.SecondMonitor.Diagnostics"];
         });
+    LMSecondMonitorSettingsViewController *panel = (LMSecondMonitorSettingsViewController *)navigation.topViewController;
+    panel.allAppsHostUUID = active ? savedHostUUID : nil;
     navigation.modalPresentationStyle = UIModalPresentationFormSheet;
     [presenter presentViewController:navigation animated:YES completion:nil];
 }
