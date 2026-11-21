@@ -9,7 +9,14 @@
 #import "StreamView.h"
 #import "StreamManager.h"
 #import "SettingsViewController.h"
-#import "TemporaryHost.h"
+
+@interface LMPreviewComputer : NSObject
+@property(nonatomic, copy) NSString *name;
+@property(nonatomic, copy) NSString *uuid;
+@end
+
+@implementation LMPreviewComputer
+@end
 
 @interface LMTrackingStreamView : StreamView
 @property (nonatomic) BOOL cancelledOnMainThread;
@@ -42,7 +49,7 @@
 
 - (void)testSecondDisplayFormSheetLayout {
     LMStreamProfile *profile = [LMStreamProfile defaultSecondMonitorProfile];
-    TemporaryHost *host = [[TemporaryHost alloc] init];
+    LMPreviewComputer *host = [[LMPreviewComputer alloc] init];
     host.name = @"Workstation";
     host.uuid = @"preview-host";
     UINavigationController *navigation = LMCreateSecondMonitorSettingsNavigationController(
@@ -553,8 +560,8 @@
     [field releaseAllKeyboardActions];
 
     XCTAssertEqual(callbacks.count, 2U);
-    XCTAssertEqualObjects(callbacks[0], @[@(LMKeyboardActionShift), @YES]);
-    XCTAssertEqualObjects(callbacks[1], @[@(LMKeyboardActionShift), @NO]);
+    XCTAssertEqualObjects(callbacks[0], (@[@(LMKeyboardActionShift), @YES]));
+    XCTAssertEqualObjects(callbacks[1], (@[@(LMKeyboardActionShift), @NO]));
 }
 
 - (void)testSecondMonitorToolbarAndOverlayPredicatesDoNotApplyToGameMode {
