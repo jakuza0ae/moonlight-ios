@@ -26,6 +26,10 @@ BOOL LMShouldShowGamepadOverlayForStreamConfiguration(StreamConfiguration *strea
     return !LMShouldShowDesktopToolbarForStreamConfiguration(streamConfig);
 }
 
+@protocol StreamDeskTouchCancellation <NSObject>
+- (void)cancelAllTouches;
+@end
+
 @implementation StreamView {
     OnScreenControls* onScreenControls;
     
@@ -431,7 +435,7 @@ BOOL LMShouldShowGamepadOverlayForStreamConfiguration(StreamConfiguration *strea
 
 - (void) cancelAllTouches {
     if ([touchHandler respondsToSelector:@selector(cancelAllTouches)]) {
-        [touchHandler cancelAllTouches];
+        [(id<StreamDeskTouchCancellation>)touchHandler cancelAllTouches];
     }
     [self releaseKeyboardActions];
 }

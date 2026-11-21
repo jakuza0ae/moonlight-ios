@@ -625,17 +625,21 @@ static NSMutableSet* hostList;
     }
 
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    BOOL secondMonitorActive = [defaults boolForKey:@"Moonlight.SecondMonitor.Active"];
     NSString *selectedHostUUID = [defaults stringForKey:@"Moonlight.SecondMonitor.HostUUID"];
-    LMStreamProfile *secondMonitorProfile = selectedHostUUID.length != 0 ? [dataMan getSecondMonitorProfileForHost:selectedHostUUID] : nil;
-    if (secondMonitorActive && (!LMSecondMonitorProfileSelectionIsValid(YES, selectedHostUUID, secondMonitorProfile) ||
-                                ![selectedHostUUID isEqualToString:app.host.uuid])) {
-        [self presentStreamPreparationError:[NSError errorWithDomain:LMProfileValidationDomain
-                                                                  code:LMProfileValidationErrorInvalidValue
-                                                              userInfo:@{NSLocalizedDescriptionKey: @"Choose a valid second-monitor profile for this host before starting the stream."}]];
-        return NO;
+    BOOL hostProfileEnabled = [defaults boolForKey:@"Moonlight.SecondMonitor.Active"] &&
+                              [selectedHostUUID isEqualToString:app.host.uuid];
+    BOOL displayApp = NO;
+#if !TARGET_OS_TV
+    if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad && app.name.length != 0) {
+        displayApp = [app.name caseInsensitiveCompare:@"iPad Air"] == NSOrderedSame ||
+                     [app.name caseInsensitiveCompare:@"StreamDesk Display"] == NSOrderedSame;
     }
-    if (LMShouldUseSecondMonitorProfile(secondMonitorActive, secondMonitorProfile)) {
+#endif
+    if (displayApp || hostProfileEnabled) {
+        LMStreamProfile *secondMonitorProfile = [dataMan getSecondMonitorProfileForHost:app.host.uuid];
+        if (secondMonitorProfile == nil) {
+            secondMonitorProfile = [LMStreamProfile defaultSecondMonitorProfile];
+        }
         NSError *profileError = nil;
         if (![_streamConfig applyProfile:secondMonitorProfile error:&profileError]) {
             [self presentStreamPreparationError:profileError];
@@ -957,6 +961,12 @@ static NSMutableSet* hostList;
     }
 }
 
+#if !TARGET_OS_TV
+- (void)openSecondDisplaySettings:(id)sender {
+    LMPresentSecondDisplaySettings([self activeViewController], _selectedHost.uuid);
+}
+#endif
+
 // Adjust the subviews for the safe area on the iPhone X.
 - (void)viewSafeAreaInsetsDidChange {
     [super viewSafeAreaInsetsDidChange];
@@ -974,6 +984,21 @@ static NSMutableSet* hostList;
     [_settingsButton setTarget:self.revealViewController];
     [_settingsButton setAction:@selector(revealToggle:)];
     
+    self.view.backgroundColor = [UIColor colorWithWhite:0.08 alpha:1];
+    self.collectionView.backgroundColor = self.view.backgroundColor;
+    UINavigationBar *bar = self.navigationController.navigationBar;
+    bar.barTintColor = [UIColor colorWithWhite:0.08 alpha:1];
+    bar.tintColor = [UIColor colorWithRed:0.75 green:0.93 blue:0.79 alpha:1];
+    bar.titleTextAttributes = @{NSForegroundColorAttributeName: UIColor.whiteColor};
+    if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad) {
+        UIBarButtonItem *display = [[UIBarButtonItem alloc] initWithTitle:@"Second display"
+                                                                  style:UIBarButtonItemStylePlain
+                                                                 target:self
+                                                                 action:@selector(openSecondDisplaySettings:)];
+        NSArray *items = self.navigationItem.rightBarButtonItems ?: @[];
+        self.navigationItem.rightBarButtonItems = [items arrayByAddingObject:display];
+    }
+
     // Set the host name button action. When it's tapped, it'll show the host selection view.
     [_upButton setTarget:self];
     [_upButton setAction:@selector(showHostSelectionView)];
@@ -1462,12 +1487,16 @@ static NSMutableSet* hostList;
 #endif
 
 - (void) disableNavigation {
-    self.navigationController.navigationBar.topItem.rightBarButtonItem.enabled = NO;
+    for (UIBarButtonItem *button in self.navigationController.navigationBar.topItem.rightBarButtonItems) {
+        button.enabled = NO;
+    }
     self.navigationController.navigationBar.topItem.leftBarButtonItem.enabled = NO;
 }
 
 - (void) enableNavigation {
-    self.navigationController.navigationBar.topItem.rightBarButtonItem.enabled = YES;
+    for (UIBarButtonItem *button in self.navigationController.navigationBar.topItem.rightBarButtonItems) {
+        button.enabled = YES;
+    }
     self.navigationController.navigationBar.topItem.leftBarButtonItem.enabled = YES;
 }
 

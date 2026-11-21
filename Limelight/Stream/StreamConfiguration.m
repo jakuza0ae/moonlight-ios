@@ -45,9 +45,9 @@ BOOL LMShouldRetryStreamFailure(BOOL reconnectEnabled, BOOL stopping) {
 + (instancetype)defaultSecondMonitorProfile {
     LMStreamProfile *profile = [[self alloc] init];
     profile.mode = LMStreamModeSecondMonitor;
-    profile.resolution = CGSizeMake(1280, 720);
+    profile.resolution = CGSizeMake(1280, 960);
     profile.fps = 30;
-    profile.bitrate = 5000;
+    profile.bitrate = 6000;
     profile.codec = LMStreamCodecH264;
     profile.audioPolicy = LMAudioPolicyDisabled;
     profile.inputMode = LMInputModeNativeTouch;
@@ -75,7 +75,12 @@ BOOL LMShouldRetryStreamFailure(BOOL reconnectEnabled, BOOL stopping) {
 + (NSArray<NSValue *> *)supportedResolutionsForCapabilityProfile:(LMDeviceCapabilityProfile)capabilityProfile
                                            experimental1080pEnabled:(BOOL)experimental1080pEnabled {
     if (capabilityProfile == LMDeviceCapabilityProfileIPadAir) {
-        NSMutableArray<NSValue *> *resolutions = [NSMutableArray arrayWithObject:[NSValue valueWithCGSize:CGSizeMake(1280, 720)]];
+        NSMutableArray<NSValue *> *resolutions = [NSMutableArray arrayWithArray:@[
+            [NSValue valueWithCGSize:CGSizeMake(1280, 960)],
+            [NSValue valueWithCGSize:CGSizeMake(1024, 768)],
+            [NSValue valueWithCGSize:CGSizeMake(1440, 1080)],
+            [NSValue valueWithCGSize:CGSizeMake(1280, 720)]
+        ]];
         if (experimental1080pEnabled) {
             [resolutions addObject:[NSValue valueWithCGSize:CGSizeMake(1920, 1080)]];
         }
@@ -83,6 +88,9 @@ BOOL LMShouldRetryStreamFailure(BOOL reconnectEnabled, BOOL stopping) {
     }
 
     return @[
+        [NSValue valueWithCGSize:CGSizeMake(1280, 960)],
+        [NSValue valueWithCGSize:CGSizeMake(1024, 768)],
+        [NSValue valueWithCGSize:CGSizeMake(1440, 1080)],
         [NSValue valueWithCGSize:CGSizeMake(1280, 720)],
         [NSValue valueWithCGSize:CGSizeMake(1920, 1080)],
     ];
@@ -211,7 +219,14 @@ BOOL LMShouldRetryStreamFailure(BOOL reconnectEnabled, BOOL stopping) {
         }
         BOOL is720p = self.resolution.width == 1280 && self.resolution.height == 720;
         BOOL isExperimental1080p = self.resolution.width == 1920 && self.resolution.height == 1080 && self.fps == 30;
-        if (!is720p && !(isExperimental1080p && self.experimental1080pEnabled)) {
+        BOOL isFourByThree = CGSizeEqualToSize(self.resolution, CGSizeMake(1024, 768)) ||
+            CGSizeEqualToSize(self.resolution, CGSizeMake(1280, 960)) ||
+            CGSizeEqualToSize(self.resolution, CGSizeMake(1440, 1080));
+        if (isFourByThree && self.fps != 30) {
+            setError(LMProfileValidationErrorUnsupportedFrameRate, @"fps", @"Use 30 FPS for a 4:3 stream on the first iPad Air.");
+            return NO;
+        }
+        if (!isFourByThree && !is720p && !(isExperimental1080p && self.experimental1080pEnabled)) {
             setError(LMProfileValidationErrorExperimentalResolutionDisabled, @"resolution", @"1080p30 must be explicitly enabled on the iPad Air profile.");
             return NO;
         }

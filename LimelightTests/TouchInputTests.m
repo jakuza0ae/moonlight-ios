@@ -388,14 +388,26 @@
     XCTAssertEqual([LMStreamProfile capabilityProfileForMachineIdentifier:@"iPad4,4"], LMDeviceCapabilityProfileGeneric);
 }
 
-- (void)testIPadAirProfileExposesOnly720pAndOptIn1080p30 {
-    NSArray<NSValue *> *defaultResolutions = [LMStreamProfile supportedResolutionsForCapabilityProfile:LMDeviceCapabilityProfileIPadAir experimental1080pEnabled:NO];
-    NSArray<NSValue *> *experimentalResolutions = [LMStreamProfile supportedResolutionsForCapabilityProfile:LMDeviceCapabilityProfileIPadAir experimental1080pEnabled:YES];
+- (void)testIPadAirDisplayPresetsFitTheScreenAndUseThirtyFPS {
+    LMStreamProfile *profile = [LMStreamProfile defaultSecondMonitorProfile];
+    XCTAssertTrue(CGSizeEqualToSize(profile.resolution, CGSizeMake(1280, 960)));
+    NSArray<NSValue *> *modes = [LMStreamProfile supportedResolutionsForCapabilityProfile:LMDeviceCapabilityProfileIPadAir
+                                                                              experimental1080pEnabled:NO];
+    NSArray<NSValue *> *allModes = [LMStreamProfile supportedResolutionsForCapabilityProfile:LMDeviceCapabilityProfileIPadAir
+                                                                                 experimental1080pEnabled:YES];
 
-    XCTAssertEqual(defaultResolutions.count, 1U);
-    XCTAssertEqual(experimentalResolutions.count, 2U);
-    XCTAssertTrue(CGSizeEqualToSize(defaultResolutions[0].CGSizeValue, CGSizeMake(1280, 720)));
-    XCTAssertTrue(CGSizeEqualToSize(experimentalResolutions[1].CGSizeValue, CGSizeMake(1920, 1080)));
+    XCTAssertEqual(modes.count, 4U);
+    XCTAssertEqual(allModes.count, 5U);
+    XCTAssertFalse([modes containsObject:[NSValue valueWithCGSize:CGSizeMake(1920, 1080)]]);
+    XCTAssertTrue([allModes containsObject:[NSValue valueWithCGSize:CGSizeMake(1920, 1080)]]);
+    for (NSValue *mode in [modes subarrayWithRange:NSMakeRange(0, 3)]) {
+        profile.resolution = mode.CGSizeValue;
+        XCTAssertEqual(profile.resolution.width * 3, profile.resolution.height * 4);
+        profile.fps = 30;
+        XCTAssertTrue([profile validateForCapabilityProfile:LMDeviceCapabilityProfileIPadAir error:nil]);
+        profile.fps = 60;
+        XCTAssertFalse([profile validateForCapabilityProfile:LMDeviceCapabilityProfileIPadAir error:nil]);
+    }
 }
 
 - (void)testReconnectUsesAStableConfigurationSnapshot {

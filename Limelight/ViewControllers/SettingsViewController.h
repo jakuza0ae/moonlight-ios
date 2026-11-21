@@ -22,6 +22,8 @@ FOUNDATION_EXPORT UINavigationController *LMCreateSecondMonitorSettingsNavigatio
     BOOL active,
     LMSecondMonitorSettingsCompletion _Nullable completion);
 
+FOUNDATION_EXPORT void LMPresentSecondDisplaySettings(UIViewController *presenter, NSString * _Nullable preferredHostUUID);
+
 @interface SettingsViewController : UIViewController
 @property (strong, nonatomic) IBOutlet UILabel *bitrateLabel;
 @property (strong, nonatomic) IBOutlet UISlider *bitrateSlider;
