@@ -44,3 +44,13 @@ The IPA needs both `MinimumOSVersion = 12.0` and an arm64 Mach-O with an iOS 12 
 ## Design direction
 
 StreamDesk presents a Linux workstation on an iPad. The interface feels quiet and practical. The monitor, transfer data and profile controls define the visual language. Graphite surfaces keep the screen content prominent, with a pale green accent on selected controls and the live format readout. The profile card shows the requested picture size, frame rate and codec together. Spacing, grouping and copy were revised using the Unslop method by Damir Sokolovsky.
+
+### Sign the package on Linux
+
+With a device profile covering `org.streamdesk.client` and its matching Apple development identity exported as PKCS#12, run the following command with [zsign](https://github.com/zhlynn/zsign) on the local PATH.
+
+```sh
+BuildScripts/sign-ipad-ipa-linux.sh StreamDesk-iOS12-unsigned.ipa Device.mobileprovision Development.p12 StreamDesk-signed.ipa
+```
+
+OpenSSL prompts for the identity password locally. The script checks certificate membership, bundle identifier and expiration, preserves the certificate chain, and verifies the embedded profile and package structure. The signing workflow passed a positive test with a synthetic certificate chain and rejected a mismatched profile. A stock iPad checks the Apple trust chain and its device registration at installation. Device installation and startup are still acceptance steps.
