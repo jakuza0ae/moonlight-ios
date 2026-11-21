@@ -1056,9 +1056,13 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
+					"$(PROJECT_DIR)/Limelight",
 					"$(PROJECT_DIR)/Limelight/Database",
 					"$(PROJECT_DIR)/Limelight/Input",
 					"$(PROJECT_DIR)/Limelight/Stream",
+					"$(PROJECT_DIR)/Limelight/ViewControllers",
+					"$(PROJECT_DIR)/moonlight-common/moonlight-common-c/src",
+					"$(CONFIGURATION_TEMP_DIR)/Moonlight.build/DerivedSources",
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.moonlight-stream.MoonlightTests";
@@ -1078,9 +1082,13 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
+					"$(PROJECT_DIR)/Limelight",
 					"$(PROJECT_DIR)/Limelight/Database",
 					"$(PROJECT_DIR)/Limelight/Input",
 					"$(PROJECT_DIR)/Limelight/Stream",
+					"$(PROJECT_DIR)/Limelight/ViewControllers",
+					"$(PROJECT_DIR)/moonlight-common/moonlight-common-c/src",
+					"$(CONFIGURATION_TEMP_DIR)/Moonlight.build/DerivedSources",
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.moonlight-stream.MoonlightTests";
