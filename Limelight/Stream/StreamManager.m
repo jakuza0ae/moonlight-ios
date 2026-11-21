@@ -201,7 +201,9 @@ NSString *LMFormatLegacyStatsOverlay(NSInteger width,
     _callbacks = _callbackProxy;
     _diagnosticState = @"connecting";
     if (_config.profile != nil) {
-        [_config applyProfile:_config.profile error:&_configurationError];
+        NSError *configurationError = nil;
+        [_config applyProfile:_config.profile error:&configurationError];
+        _configurationError = configurationError;
     }
     _config.riKey = [Utils randomBytes:16];
     _config.riKeyId = arc4random();
