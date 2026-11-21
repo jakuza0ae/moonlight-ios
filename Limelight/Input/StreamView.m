@@ -58,6 +58,17 @@ BOOL LMShouldRestoreDesktopBrightness(CGFloat currentBrightness, CGFloat dimmedB
 
 @end
 
+@interface LMDesktopKeyboardScrollView : UIScrollView
+@end
+
+@implementation LMDesktopKeyboardScrollView
+
+- (BOOL)touchesShouldCancelInContentView:(UIView *)view {
+    return [view isKindOfClass:LMDesktopKeyButton.class] || [super touchesShouldCancelInContentView:view];
+}
+
+@end
+
 @implementation StreamView {
     OnScreenControls* onScreenControls;
     
@@ -441,8 +452,12 @@ BOOL LMShouldRestoreDesktopBrightness(CGFloat currentBrightness, CGFloat dimmedB
     [button.heightAnchor constraintEqualToConstant:44].active = YES;
     [button updateSurface];
     objc_setAssociatedObject(button, LMKeyboardActionAssociationKey, @(action), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    [button addTarget:self action:@selector(desktopKeyboardActionDown:) forControlEvents:UIControlEventTouchDown];
-    [button addTarget:self action:@selector(desktopKeyboardActionUp:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
+    if (LMKeyboardActionIsModifier(action)) {
+        [button addTarget:self action:@selector(desktopKeyboardActionDown:) forControlEvents:UIControlEventTouchDown];
+        [button addTarget:self action:@selector(desktopKeyboardActionUp:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
+    } else {
+        [button addTarget:self action:@selector(desktopKeyboardActionDown:) forControlEvents:UIControlEventTouchUpInside];
+    }
     return button;
 }
 
@@ -455,7 +470,7 @@ BOOL LMShouldRestoreDesktopBrightness(CGFloat currentBrightness, CGFloat dimmedB
     divider.backgroundColor = [UIColor colorWithWhite:1 alpha:0.12];
     [accessory addSubview:divider];
 
-    UIScrollView *scroll = [[UIScrollView alloc] init];
+    UIScrollView *scroll = [[LMDesktopKeyboardScrollView alloc] init];
     scroll.translatesAutoresizingMaskIntoConstraints = NO;
     scroll.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
     scroll.delaysContentTouches = NO;

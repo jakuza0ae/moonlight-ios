@@ -20,6 +20,8 @@ typedef NS_ENUM(NSInteger, LMKeyboardAction) {
     LMKeyboardActionDelete,
 };
 
+FOUNDATION_EXPORT BOOL LMKeyboardActionIsModifier(LMKeyboardAction action);
+
 typedef void (^LMKeyboardActionHandler)(LMKeyboardAction action, BOOL pressed);
 
 @interface KeyboardInputField : UITextField

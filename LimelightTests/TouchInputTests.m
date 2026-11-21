@@ -725,6 +725,12 @@ static TemporaryHost *shortcutHost(NSString *uuid, NSArray<NSString *> *appNames
     }];
 
     UIButton *control = (UIButton *)group.arrangedSubviews[2];
+    UIButton *escape = (UIButton *)group.arrangedSubviews[0];
+    XCTAssertTrue([scroll touchesShouldCancelInContentView:control]);
+    XCTAssertEqual([escape actionsForTarget:stream forControlEvent:UIControlEventTouchDown].count, 0U);
+    XCTAssertEqual([escape actionsForTarget:stream forControlEvent:UIControlEventTouchUpInside].count, 1U);
+    XCTAssertEqual([control actionsForTarget:stream forControlEvent:UIControlEventTouchDown].count, 1U);
+    XCTAssertEqual([control actionsForTarget:stream forControlEvent:UIControlEventTouchCancel].count, 1U);
     UIColor *released = control.backgroundColor;
     control.highlighted = YES;
     XCTAssertNotEqualObjects(control.backgroundColor, released);

@@ -20,7 +20,7 @@
     return self;
 }
 
-- (BOOL)isModifierAction:(LMKeyboardAction)action {
+BOOL LMKeyboardActionIsModifier(LMKeyboardAction action) {
     return action == LMKeyboardActionControl ||
         action == LMKeyboardActionShift ||
         action == LMKeyboardActionAlt ||
@@ -29,7 +29,7 @@
 
 - (void)sendKeyboardAction:(LMKeyboardAction)action pressed:(BOOL)pressed {
     NSNumber *actionNumber = @(action);
-    if ([self isModifierAction:action]) {
+    if (LMKeyboardActionIsModifier(action)) {
         if (pressed) {
             if ([_activeKeyboardActions containsObject:actionNumber]) {
                 return;
