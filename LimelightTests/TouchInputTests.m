@@ -1,16 +1,37 @@
 #import <XCTest/XCTest.h>
 
 #import "AbsoluteTouchHandler.h"
+#import "AppDelegate.h"
 #import "RelativeTouchHandler.h"
 #import "StreamConfiguration.h"
 #import "Connection.h"
 #import "StreamFrameViewController.h"
 #import "KeyboardInputField.h"
 #import "KeyboardSupport.h"
+#import "MainFrameViewController.h"
 #import "StreamView.h"
 #import "StreamManager.h"
 #import "SettingsViewController.h"
+#import "TemporaryApp.h"
 #include <Limelight.h>
+
+static TemporaryHost *shortcutHost(NSString *uuid, NSArray<NSString *> *appNames) {
+    TemporaryHost *host = [[TemporaryHost alloc] init];
+    host.uuid = uuid;
+    host.activeAddress = @"streamdesk.test:48189";
+    host.pairState = PairStatePaired;
+    host.serverCert = [@"test certificate" dataUsingEncoding:NSUTF8StringEncoding];
+    NSMutableSet<TemporaryApp *> *apps = [NSMutableSet set];
+    for (NSString *name in appNames) {
+        TemporaryApp *app = [[TemporaryApp alloc] init];
+        app.id = [NSString stringWithFormat:@"%lu", (unsigned long)(apps.count + 1)];
+        app.name = name;
+        app.host = host;
+        [apps addObject:app];
+    }
+    host.appList = apps;
+    return host;
+}
 
 @interface LMPreviewComputer : NSObject
 @property(nonatomic, copy) NSString *name;
@@ -65,6 +86,49 @@
 @end
 
 @implementation TouchInputTests
+
+- (void)testSecondDisplayShortcutAcceptsOnlyTheDocumentedURL {
+    XCTAssertTrue(LMIsSecondDisplayShortcutURL([NSURL URLWithString:@"streamdesk://second-display"]));
+    XCTAssertFalse(LMIsSecondDisplayShortcutURL([NSURL URLWithString:@"https://second-display"]));
+    XCTAssertFalse(LMIsSecondDisplayShortcutURL([NSURL URLWithString:@"streamdesk://second-display?host=example.test"]));
+    XCTAssertFalse(LMIsSecondDisplayShortcutURL([NSURL URLWithString:@"streamdesk://second-display/extra"]));
+    XCTAssertFalse(LMIsSecondDisplayShortcutURL([NSURL URLWithString:@"streamdesk://second-display#extra"]));
+    XCTAssertFalse(LMIsSecondDisplayShortcutURL([NSURL URLWithString:@"streamdesk://other@second-display"]));
+}
+
+- (void)testSecondDisplayShortcutSelectsConfiguredHostAndPrefersStreamDeskApp {
+    TemporaryHost *first = shortcutHost(@"first", @[@"Desktop", @"StreamDesk Display", @"iPad Air"]);
+    TemporaryHost *second = shortcutHost(@"second", @[@"iPad Air"]);
+    XCTAssertNil(LMSecondDisplayShortcutApp(@[first, second], nil));
+    XCTAssertEqualObjects(LMSecondDisplayShortcutApp(@[first, second], @"first").name, @"StreamDesk Display");
+    XCTAssertEqualObjects(LMSecondDisplayShortcutApp(@[first, second], @"second").name, @"iPad Air");
+    XCTAssertNil(LMSecondDisplayShortcutApp(@[first, second], @"removed"));
+    XCTAssertEqualObjects(LMSecondDisplayShortcutApp(@[first], nil).host, first);
+}
+
+- (void)testSecondDisplayShortcutSkipsUnpairedHiddenAndAmbiguousApps {
+    TemporaryHost *unpaired = shortcutHost(@"unpaired", @[@"StreamDesk Display"]);
+    unpaired.pairState = PairStateUnpaired;
+    TemporaryHost *hidden = shortcutHost(@"hidden", @[@"StreamDesk Display", @"Desktop"]);
+    for (TemporaryApp *app in hidden.appList) {
+        if ([app.name isEqualToString:@"StreamDesk Display"]) {
+            app.hidden = YES;
+        }
+    }
+    TemporaryHost *ambiguous = shortcutHost(@"ambiguous", @[@"StreamDesk Display", @"streamdesk display"]);
+    XCTAssertNil(LMSecondDisplayShortcutApp(@[unpaired, hidden, ambiguous], nil));
+    XCTAssertNil(LMSecondDisplayShortcutApp(@[unpaired, hidden, ambiguous], @"ambiguous"));
+    XCTAssertNil(LMSecondDisplayShortcutApp(@[unpaired, hidden], @"hidden"));
+    XCTAssertNil(LMSecondDisplayShortcutApp(@[unpaired], nil));
+}
+
+- (void)testSecondDisplayShortcutPreservesAppMatchWhenCopyingConfiguration {
+    StreamConfiguration *config = [[StreamConfiguration alloc] init];
+    XCTAssertFalse(config.requireMatchingAppOnResume);
+    config.requireMatchingAppOnResume = YES;
+    StreamConfiguration *copy = [config copy];
+    XCTAssertTrue(copy.requireMatchingAppOnResume);
+}
 
 - (void)testSecondDisplayFormSheetLayout {
     LMStreamProfile *profile = [LMStreamProfile defaultSecondMonitorProfile];

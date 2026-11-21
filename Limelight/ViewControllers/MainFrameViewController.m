@@ -8,6 +8,7 @@
 @import ImageIO;
 
 #import "MainFrameViewController.h"
+#import "AppDelegate.h"
 #import "CryptoManager.h"
 #import "HttpManager.h"
 #import "Connection.h"
@@ -36,6 +37,51 @@
 #import <VideoToolbox/VideoToolbox.h>
 
 #include <Limelight.h>
+
+static NSUInteger secondDisplayAppPriority(NSString *name) {
+    if (name.length == 0) {
+        return 0;
+    }
+    if ([name caseInsensitiveCompare:@"StreamDesk Display"] == NSOrderedSame) {
+        return 2;
+    }
+    return [name caseInsensitiveCompare:@"iPad Air"] == NSOrderedSame ? 1 : 0;
+}
+
+TemporaryApp *LMSecondDisplayShortcutApp(NSArray<TemporaryHost *> *hosts, NSString *preferredHostUUID) {
+    TemporaryApp *selectedApp = nil;
+    for (TemporaryHost *host in hosts) {
+        if ((preferredHostUUID.length != 0 && ![host.uuid isEqualToString:preferredHostUUID]) ||
+            host.pairState != PairStatePaired || host.serverCert.length == 0 || host.activeAddress.length == 0) {
+            continue;
+        }
+
+        TemporaryApp *hostApp = nil;
+        NSUInteger priority = 0;
+        BOOL ambiguous = NO;
+        for (TemporaryApp *app in host.appList) {
+            NSUInteger candidatePriority = secondDisplayAppPriority(app.name);
+            if (app.host != host || app.hidden || app.id.length == 0 || candidatePriority == 0) {
+                continue;
+            }
+            if (candidatePriority > priority) {
+                hostApp = app;
+                priority = candidatePriority;
+                ambiguous = NO;
+            } else if (candidatePriority == priority) {
+                ambiguous = YES;
+            }
+        }
+
+        if (ambiguous || (hostApp != nil && selectedApp != nil)) {
+            return nil;
+        }
+        if (hostApp != nil) {
+            selectedApp = hostApp;
+        }
+    }
+    return selectedApp;
+}
 
 @implementation MainFrameViewController {
     NSOperationQueue* _opQueue;
@@ -630,9 +676,8 @@ static NSMutableSet* hostList;
                               [selectedHostUUID isEqualToString:app.host.uuid];
     BOOL displayApp = NO;
 #if !TARGET_OS_TV
-    if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad && app.name.length != 0) {
-        displayApp = [app.name caseInsensitiveCompare:@"iPad Air"] == NSOrderedSame ||
-                     [app.name caseInsensitiveCompare:@"StreamDesk Display"] == NSOrderedSame;
+    if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad) {
+        displayApp = secondDisplayAppPriority(app.name) != 0;
     }
 #endif
     if (displayApp || hostProfileEnabled) {
@@ -965,6 +1010,55 @@ static NSMutableSet* hostList;
 - (void)openSecondDisplaySettings:(id)sender {
     LMPresentSecondDisplaySettings([self activeViewController], _selectedHost.uuid);
 }
+
+- (void)secondDisplayShortcutReceived:(NSNotification *)notification {
+    [self handlePendingSecondDisplayShortcut];
+}
+
+- (BOOL)handlePendingSecondDisplayShortcut {
+    UIApplication *application = UIApplication.sharedApplication;
+    AppDelegate *delegate = (AppDelegate *)application.delegate;
+    if (!delegate.secondDisplayShortcutPending || application.applicationState != UIApplicationStateActive ||
+        self.navigationController == nil) {
+        return NO;
+    }
+
+    if (self.navigationController.topViewController != self) {
+        delegate.secondDisplayShortcutPending = NO;
+        return NO;
+    }
+    UIWindow *window = self.viewIfLoaded.window;
+    if (window == nil) {
+        return NO;
+    }
+
+    delegate.secondDisplayShortcutPending = NO;
+    if (window.rootViewController.presentedViewController != nil) {
+        return NO;
+    }
+
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    NSString *preferredHostUUID = [defaults stringForKey:LMSecondDisplayShortcutHostKey] ?: [defaults stringForKey:@"Moonlight.SecondMonitor.HostUUID"];
+    NSArray<TemporaryHost *> *hosts;
+    @synchronized (hostList) {
+        hosts = hostList.allObjects;
+    }
+    TemporaryApp *app = LMSecondDisplayShortcutApp(hosts, preferredHostUUID);
+    if (app == nil) {
+        LMPresentSecondDisplaySettings(window.rootViewController, nil);
+        return YES;
+    }
+
+    if (currentPosition != FrontViewPositionLeft) {
+        [[self revealViewController] revealToggleAnimated:NO];
+    }
+    if ([self prepareToStreamApp:app]) {
+        _streamConfig.requireMatchingAppOnResume = YES;
+        [_appManager stopRetrieving];
+        [self performSegueWithIdentifier:@"createStreamFrame" sender:nil];
+    }
+    return YES;
+}
 #endif
 
 // Adjust the subviews for the safe area on the iPhone X.
@@ -1066,6 +1160,12 @@ static NSMutableSet* hostList;
 #endif
     
     [self retrieveSavedHosts];
+#if !TARGET_OS_TV
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(secondDisplayShortcutReceived:)
+                                                 name:LMSecondDisplayShortcutNotification
+                                               object:UIApplication.sharedApplication.delegate];
+#endif
     _discMan = [[DiscoveryManager alloc] initWithHosts:[hostList allObjects] andCallback:self];
         
     if ([hostList count] == 1) {
@@ -1149,6 +1249,11 @@ static NSMutableSet* hostList;
 -(void)handleReturnToForeground
 {
     _background = NO;
+#if !TARGET_OS_TV
+    if ([self handlePendingSecondDisplayShortcut]) {
+        return;
+    }
+#endif
     
     [self beginForegroundRefresh];
     
@@ -1190,6 +1295,9 @@ static NSMutableSet* hostList;
                                              selector: @selector(handleEnterBackground)
                                                  name: UIApplicationWillResignActiveNotification
                                                object: nil];
+#if !TARGET_OS_TV
+    [self handlePendingSecondDisplayShortcut];
+#endif
 }
 
 - (void)viewWillAppear:(BOOL)animated
@@ -1223,7 +1331,8 @@ static NSMutableSet* hostList;
     
     // Remove our lifetime observers to avoid triggering them
     // while streaming
-    [[NSNotificationCenter defaultCenter] removeObserver:self];
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:UIApplicationDidBecomeActiveNotification object:nil];
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:UIApplicationWillResignActiveNotification object:nil];
 }
 
 - (void) retrieveSavedHosts {

@@ -561,12 +561,14 @@ UINavigationController *LMCreateSecondMonitorSettingsNavigationController(NSArra
     return navigationController;
 }
 
+NSString * const LMSecondDisplayShortcutHostKey = @"Moonlight.SecondMonitor.ShortcutHostUUID";
+
 void LMPresentSecondDisplaySettings(UIViewController *presenter, NSString *preferredHostUUID) {
     DataManager *dataMan = [[DataManager alloc] init];
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     BOOL active = [defaults boolForKey:@"Moonlight.SecondMonitor.Active"];
     NSString *savedHostUUID = [defaults stringForKey:@"Moonlight.SecondMonitor.HostUUID"];
-    NSString *hostUUID = preferredHostUUID ?: savedHostUUID;
+    NSString *hostUUID = preferredHostUUID ?: [defaults stringForKey:LMSecondDisplayShortcutHostKey] ?: savedHostUUID;
     NSArray *hosts = [dataMan getHosts];
     if (hostUUID == nil && hosts.count == 1) {
         hostUUID = [hosts.firstObject valueForKey:@"uuid"];
@@ -577,6 +579,7 @@ void LMPresentSecondDisplaySettings(UIViewController *presenter, NSString *prefe
         ^(NSString *selectedHostUUID, LMStreamProfile *updatedProfile, BOOL selectedActive, BOOL diagnostics) {
             if (selectedHostUUID.length != 0) {
                 [dataMan saveSecondMonitorProfile:updatedProfile forHost:selectedHostUUID];
+                [defaults setObject:selectedHostUUID forKey:LMSecondDisplayShortcutHostKey];
             }
             if (selectedActive) {
                 [defaults setObject:selectedHostUUID forKey:@"Moonlight.SecondMonitor.HostUUID"];

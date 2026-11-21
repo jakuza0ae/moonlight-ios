@@ -136,6 +136,7 @@ FOUNDATION_EXPORT BOOL LMShouldRetryStreamFailure(BOOL reconnectEnabled,
 @property int gamepadMask;
 @property BOOL optimizeGameSettings;
 @property BOOL playAudioOnPC;
+@property BOOL requireMatchingAppOnResume;
 @property BOOL swapABXYButtons;
 @property int audioConfiguration;
 @property int supportedVideoFormats;

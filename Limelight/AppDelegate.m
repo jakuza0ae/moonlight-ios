@@ -16,6 +16,12 @@
 
 static NSOperationQueue* mainQueue;
 
+NSNotificationName const LMSecondDisplayShortcutNotification = @"LMSecondDisplayShortcutNotification";
+
+BOOL LMIsSecondDisplayShortcutURL(NSURL *url) {
+    return [url.absoluteString isEqualToString:@"streamdesk://second-display"];
+}
+
 #if TARGET_OS_TV
 static NSString* DB_NAME = @"Moonlight_tvOS.bin";
 #else
@@ -33,6 +39,16 @@ static NSString* DB_NAME = @"Limelight_iOS.sqlite";
 }
 
 #if !TARGET_OS_TV
+- (BOOL)application:(UIApplication *)application openURL:(NSURL *)url options:(NSDictionary<UIApplicationOpenURLOptionsKey, id> *)options {
+    if (UIDevice.currentDevice.userInterfaceIdiom != UIUserInterfaceIdiomPad || !LMIsSecondDisplayShortcutURL(url)) {
+        return NO;
+    }
+
+    self.secondDisplayShortcutPending = YES;
+    [[NSNotificationCenter defaultCenter] postNotificationName:LMSecondDisplayShortcutNotification object:self];
+    return YES;
+}
+
 - (void)application:(UIApplication *)application performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completionHandler:(void (^)(BOOL succeeded))completionHandler {
     _pcUuidToLoad = (NSString*)[shortcutItem.userInfo objectForKey:@"UUID"];
     _shortcutCompletionHandler = completionHandler;
@@ -47,6 +63,7 @@ static NSString* DB_NAME = @"Limelight_iOS.sqlite";
 
 - (void)applicationDidEnterBackground:(UIApplication *)application
 {
+    self.secondDisplayShortcutPending = NO;
     // Use this method to release shared resources, save user data, invalidate timers, and store enough application state information to restore your application to its current state in case it is terminated later.
     // If your application supports background execution, this method is called instead of applicationWillTerminate: when the user quits.
 }

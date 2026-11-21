@@ -15,6 +15,8 @@
 #import "AppAssetManager.h"
 #import "SWRevealViewController.h"
 
+FOUNDATION_EXPORT TemporaryApp *LMSecondDisplayShortcutApp(NSArray<TemporaryHost *> *hosts, NSString *preferredHostUUID);
+
 @interface MainFrameViewController : UICollectionViewController <DiscoveryCallback, PairCallback, HostCallback, AppCallback, AppAssetCallback, NSURLConnectionDelegate, SWRevealViewControllerDelegate>
 
 @property (weak, nonatomic) IBOutlet UIBarButtonItem *settingsButton;

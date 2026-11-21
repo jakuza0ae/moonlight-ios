@@ -7,12 +7,17 @@
 //
 
 #import <UIKit/UIKit.h>
+#import <CoreData/CoreData.h>
+
+FOUNDATION_EXPORT NSNotificationName const LMSecondDisplayShortcutNotification;
+FOUNDATION_EXPORT BOOL LMIsSecondDisplayShortcutURL(NSURL *url);
 
 @interface AppDelegate : UIResponder <UIApplicationDelegate>
 
 @property (strong, nonatomic) UIWindow *window;
 @property (strong, nonatomic) NSString *pcUuidToLoad;
 @property (strong, nonatomic) void (^shortcutCompletionHandler)(BOOL);
+@property (nonatomic) BOOL secondDisplayShortcutPending;
 
 @property (readonly, strong, nonatomic) NSManagedObjectContext *managedObjectContext;
 @property (readonly, strong, nonatomic) NSManagedObjectModel *managedObjectModel;

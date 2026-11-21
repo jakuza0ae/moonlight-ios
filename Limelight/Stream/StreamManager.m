@@ -265,6 +265,11 @@ NSString *LMFormatLegacyStatsOverlay(NSInteger width,
     // resumeApp and launchApp handle calling launchFailed
     NSString* sessionUrl;
     if ([serverState hasSuffix:@"_SERVER_BUSY"]) {
+        if (_config.requireMatchingAppOnResume &&
+            ![_config.appID isEqualToString:[[serverInfoResp getStringTag:TAG_CURRENT_GAME] trim]]) {
+            [_callbacks launchFailed:@"Another app is running on this PC. Open the computer in StreamDesk to choose what to do."];
+            return;
+        }
         // App already running, resume it
         if (![self resumeApp:hMan receiveSessionUrl:&sessionUrl]) {
             return;

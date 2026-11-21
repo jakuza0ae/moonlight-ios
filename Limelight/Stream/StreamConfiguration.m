@@ -358,6 +358,7 @@ BOOL LMShouldRetryStreamFailure(BOOL reconnectEnabled, BOOL stopping) {
     copy.gamepadMask = self.gamepadMask;
     copy.optimizeGameSettings = self.optimizeGameSettings;
     copy.playAudioOnPC = self.playAudioOnPC;
+    copy.requireMatchingAppOnResume = self.requireMatchingAppOnResume;
     copy.swapABXYButtons = self.swapABXYButtons;
     copy.audioConfiguration = self.audioConfiguration;
     copy.supportedVideoFormats = self.supportedVideoFormats;

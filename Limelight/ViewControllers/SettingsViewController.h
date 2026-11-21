@@ -23,6 +23,7 @@ FOUNDATION_EXPORT UINavigationController *LMCreateSecondMonitorSettingsNavigatio
     LMSecondMonitorSettingsCompletion _Nullable completion);
 
 FOUNDATION_EXPORT void LMPresentSecondDisplaySettings(UIViewController *presenter, NSString * _Nullable preferredHostUUID);
+FOUNDATION_EXPORT NSString * const LMSecondDisplayShortcutHostKey;
 
 @interface SettingsViewController : UIViewController
 @property (strong, nonatomic) IBOutlet UILabel *bitrateLabel;
