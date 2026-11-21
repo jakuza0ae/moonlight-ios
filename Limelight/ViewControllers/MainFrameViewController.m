@@ -178,12 +178,18 @@ static NSMutableSet* hostList;
     if (_selectedHost != nil) {
         self.title = _selectedHost.name;
     }
+#if TARGET_OS_TV
     else if ([hostList count] == 0) {
         self.title = @"Searching for PCs on your network...";
     }
     else {
         self.title = @"Select Host";
     }
+#else
+    else {
+        self.title = @"Computers";
+    }
+#endif
 }
 
 - (void)alreadyPaired {
@@ -1145,6 +1151,9 @@ static NSMutableSet* hostList;
         
     hostScrollView = [[ComputerScrollView alloc] init];
     hostScrollView.frame = CGRectMake(0, self.navigationController.navigationBar.frame.origin.y + self.navigationController.navigationBar.frame.size.height, self.view.frame.size.width, self.view.frame.size.height / 2);
+#if !TARGET_OS_TV
+    hostScrollView.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+#endif
     [hostScrollView setShowsHorizontalScrollIndicator:NO];
     hostScrollView.delaysContentTouches = NO;
     
@@ -1415,7 +1424,7 @@ static NSMutableSet* hostList;
         NSArray* sortedHostList = [[hostList allObjects] sortedArrayUsingSelector:@selector(compareName:)];
         for (TemporaryHost* comp in sortedHostList) {
             compView = [[UIComputerView alloc] initWithComputer:comp andCallback:self];
-            compView.center = CGPointMake([self getCompViewX:compView addComp:addComp prevEdge:prevEdge], hostScrollView.frame.size.height / 2);
+            compView.center = CGPointMake([self getCompViewX:compView prevEdge:prevEdge], hostScrollView.frame.size.height / 2);
             prevEdge = compView.frame.origin.x + compView.frame.size.width;
             [hostScrollView addSubview:compView];
             
@@ -1434,20 +1443,31 @@ static NSMutableSet* hostList;
     // Update the title in case we now have a PC
     [self updateTitle];
     
-    prevEdge = [self getCompViewX:addComp addComp:addComp prevEdge:prevEdge];
+#if !TARGET_OS_TV
+    if (prevEdge < 0) {
+        CGSize viewport = hostScrollView.bounds.size;
+        addComp.center = CGPointMake(viewport.width / 2, viewport.height / 2);
+        addComp.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin;
+        [hostScrollView addSubview:addComp];
+        hostScrollView.contentSize = CGSizeZero;
+        [hostScrollView setContentOffset:CGPointMake(-hostScrollView.adjustedContentInset.left, -hostScrollView.adjustedContentInset.top) animated:NO];
+        return;
+    }
+#endif
+    prevEdge = [self getCompViewX:addComp prevEdge:prevEdge];
     addComp.center = CGPointMake(prevEdge, hostScrollView.frame.size.height / 2);
     
     [hostScrollView addSubview:addComp];
     [hostScrollView setContentSize:CGSizeMake(prevEdge + addComp.frame.size.width, hostScrollView.frame.size.height)];
 }
 
-- (float) getCompViewX:(UIComputerView*)comp addComp:(UIComputerView*)addComp prevEdge:(float)prevEdge {
+- (float) getCompViewX:(UIComputerView*)comp prevEdge:(float)prevEdge {
     float padding;
     
 #if TARGET_OS_TV
     padding = 100;
 #else
-    padding = addComp.frame.size.width / 2;
+    padding = 24;
 #endif
     
     if (prevEdge == -1) {

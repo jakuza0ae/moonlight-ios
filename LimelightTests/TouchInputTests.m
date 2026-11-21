@@ -13,6 +13,7 @@
 #import "StreamManager.h"
 #import "SettingsViewController.h"
 #import "TemporaryApp.h"
+#import "UIComputerView.h"
 #include <Limelight.h>
 
 static TemporaryHost *shortcutHost(NSString *uuid, NSArray<NSString *> *appNames) {
@@ -92,6 +93,52 @@ static TemporaryHost *shortcutHost(NSString *uuid, NSArray<NSString *> *appNames
 @end
 
 @implementation TouchInputTests
+
+- (void)testComputerTileKeepsArtworkInsideCardAndClearOfCaption {
+    TemporaryHost *host = [[TemporaryHost alloc] init];
+    host.name = @"A very long computer name that must fit its card";
+    host.state = StateOffline;
+    UIComputerView *add = [[UIComputerView alloc] initForAddWithCallback:nil];
+    UIComputerView *offline = [[UIComputerView alloc] initWithComputer:host andCallback:nil];
+
+    for (UIComputerView *tile in @[add, offline]) {
+        UILabel *caption = nil;
+        for (UIView *view in tile.subviews) {
+            if ([view isKindOfClass:UILabel.class]) {
+                caption = (UILabel *)view;
+                break;
+            }
+        }
+        XCTAssertNotNil(caption);
+        XCTAssertTrue(CGRectContainsRect(tile.bounds, caption.frame));
+
+        NSInteger visibleImages = 0;
+        NSMutableArray<UIView *> *views = [tile.subviews mutableCopy];
+        while (views.count > 0) {
+            UIView *view = views.lastObject;
+            [views removeLastObject];
+            [views addObjectsFromArray:view.subviews];
+            if (![view isKindOfClass:UIImageView.class] || ((UIImageView *)view).image == nil) {
+                continue;
+            }
+            visibleImages++;
+            CGRect artwork = [tile convertRect:view.bounds fromView:view];
+            XCTAssertEqual(view.contentMode, UIViewContentModeScaleAspectFit);
+            XCTAssertTrue(CGRectContainsRect(tile.bounds, artwork));
+            XCTAssertLessThan(CGRectGetMaxY(artwork), CGRectGetMinY(caption.frame));
+        }
+        XCTAssertEqual(visibleImages, tile == add ? 1 : 2);
+    }
+
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithBounds:add.bounds];
+    UIImage *image = [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
+        [add.layer renderInContext:context.CGContext];
+    }];
+    XCTAttachment *attachment = [XCTAttachment attachmentWithImage:image];
+    attachment.name = @"Add computer tile";
+    attachment.lifetime = XCTAttachmentLifetimeKeepAlways;
+    [self addAttachment:attachment];
+}
 
 - (void)testDesktopBrightnessRestoresOnlyWhileTheDimValueIsStillApplied {
     XCTAssertTrue(LMShouldRestoreDesktopBrightness(0.30, 0.30));

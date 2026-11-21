@@ -11,6 +11,9 @@
 @implementation UIComputerView {
     TemporaryHost* _host;
     UIImageView* _hostIcon;
+#if !TARGET_OS_TV
+    UIView* _cardSurface;
+#endif
     UILabel* _hostLabel;
     UIImageView* _hostOverlay;
     UIActivityIndicatorView* _hostSpinner;
@@ -25,8 +28,7 @@ static const float REFRESH_CYCLE = 2.0f;
 static const int ITEM_PADDING = 50;
 static const int LABEL_DY = 40;
 #else
-static const int ITEM_PADDING = 0;
-static const int LABEL_DY = 20;
+static const int LABEL_DY = 16;
 #endif
 
 - (id) init {
@@ -36,9 +38,9 @@ static const int LABEL_DY = 20;
     self.frame = CGRectMake(0, 0, 400, 400);
 #else
     if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad) {
-        self.frame = CGRectMake(0, 0, 200, 200);
+        self.frame = CGRectMake(0, 0, 168, 120);
     } else {
-        self.frame = CGRectMake(0, 0, 100, 100);
+        self.frame = CGRectMake(0, 0, 112, 84);
     }
 #endif
     
@@ -50,13 +52,21 @@ static const int LABEL_DY = 20;
     self.layer.shadowOffset = CGSizeMake(5, 8);
     self.layer.shadowOpacity = 0.3;
 #else
-    _hostIcon.backgroundColor = [UIColor colorWithWhite:0.12 alpha:1];
-    _hostIcon.contentMode = UIViewContentModeCenter;
-    _hostIcon.layer.cornerRadius = 12;
-    _hostIcon.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
-    _hostIcon.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.12].CGColor;
+    _cardSurface = [[UIView alloc] initWithFrame:self.bounds];
+    _cardSurface.backgroundColor = [UIColor colorWithWhite:0.12 alpha:1];
+    _cardSurface.layer.cornerRadius = 12;
+    _cardSurface.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+    _cardSurface.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.12].CGColor;
+    _cardSurface.clipsToBounds = YES;
+    _cardSurface.userInteractionEnabled = NO;
+    CGFloat glyphSide = CGRectGetHeight(self.bounds) * 0.46;
+    _hostIcon.frame = CGRectMake((CGRectGetWidth(self.bounds) - glyphSide) / 2,
+                                 (CGRectGetHeight(self.bounds) - glyphSide) / 2,
+                                 glyphSide, glyphSide);
+    _hostIcon.contentMode = UIViewContentModeScaleAspectFit;
     self.isAccessibilityElement = YES;
     _hostIcon.isAccessibilityElement = NO;
+    [_cardSurface addSubview:_hostIcon];
 #endif
 
     [self addTarget:self action:@selector(hostButtonSelected:) forControlEvents:UIControlEventTouchDown];
@@ -64,17 +74,26 @@ static const int LABEL_DY = 20;
     
     _hostLabel = [[UILabel alloc] init];
     _hostLabel.textColor = [UIColor whiteColor];
+#if !TARGET_OS_TV
+    _hostLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightMedium];
+    _hostLabel.textAlignment = NSTextAlignmentCenter;
+    _hostLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+#endif
     
     _hostOverlay = [[UIImageView alloc] initWithFrame:CGRectMake(self.frame.size.width / 3, _hostIcon.frame.size.height / 4, _hostIcon.frame.size.width / 3, self.frame.size.height / 3)];
+#if !TARGET_OS_TV
+    _hostOverlay.frame = CGRectMake(CGRectGetWidth(self.bounds) - 34, 12, 22, 22);
+    _hostOverlay.contentMode = UIViewContentModeScaleAspectFit;
+#endif
     _hostSpinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleWhiteLarge];
     [_hostSpinner setFrame:_hostOverlay.frame];
     _hostSpinner.userInteractionEnabled = NO;
     _hostSpinner.hidesWhenStopped = YES;
 
     [self addSubview:_hostLabel];
-    [self addSubview:_hostIcon];
     
 #if TARGET_OS_TV
+    [self addSubview:_hostIcon];
     _hostIcon.clipsToBounds = NO;
     _hostIcon.adjustsImageWhenAncestorFocused = YES;
     _hostIcon.masksFocusEffectToContents = YES;
@@ -87,6 +106,7 @@ static const int LABEL_DY = 20;
     [_hostIcon.overlayContentView addSubview:_hostOverlay];
     [_hostIcon.overlayContentView addSubview:_hostSpinner];
 #else
+    [self insertSubview:_cardSurface atIndex:0];
     [self addSubview:_hostOverlay];
     [self addSubview:_hostSpinner];
     
@@ -100,12 +120,20 @@ static const int LABEL_DY = 20;
 }
 
 - (void) hostButtonSelected:(id)sender {
+#if !TARGET_OS_TV
+    _cardSurface.layer.opacity = 0.65f;
+#else
     _hostIcon.layer.opacity = 0.5f;
+#endif
     _hostSpinner.layer.opacity = 0.5f;
     _hostOverlay.layer.opacity = 0.5f;
 }
 - (void) hostButtonDeselected:(id)sender {
+#if !TARGET_OS_TV
+    _cardSurface.layer.opacity = 1.0f;
+#else
     _hostIcon.layer.opacity = 1.0f;
+#endif
     _hostSpinner.layer.opacity = 1.0f;
     _hostOverlay.layer.opacity = 1.0f;
 }
@@ -120,7 +148,13 @@ static const int LABEL_DY = 20;
     self.accessibilityLabel = @"Add computer";
     [_hostLabel sizeToFit];
     
+#if TARGET_OS_TV
     [_hostOverlay setImage:[UIImage imageNamed:@"AddOverlayIcon"]];
+#else
+    _hostIcon.image = [[UIImage imageNamed:@"AddOverlayIcon"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    _hostIcon.tintColor = [UIColor colorWithRed:0.75 green:0.93 blue:0.79 alpha:1];
+    self.accessibilityHint = @"Enter the address of a computer running Sunshine";
+#endif
     
     [self updateBounds];
         
@@ -161,6 +195,13 @@ static const int LABEL_DY = 20;
 }
 
 - (void) updateBounds {
+#if !TARGET_OS_TV
+    CGRect card = _cardSurface.frame;
+    CGFloat labelHeight = ceil(_hostLabel.font.lineHeight);
+    _hostLabel.frame = CGRectMake(0, CGRectGetMaxY(card) + LABEL_DY / 2,
+                                  CGRectGetWidth(card), labelHeight);
+    self.bounds = CGRectMake(0, 0, CGRectGetWidth(card), CGRectGetMaxY(_hostLabel.frame));
+#else
     float x = FLT_MAX;
     float y = FLT_MAX;
     float width = 0;
@@ -183,6 +224,7 @@ static const int LABEL_DY = 20;
         LABEL_DY / 2;
     
     self.bounds = CGRectMake(x - ITEM_PADDING, y - ITEM_PADDING, width + 2 * ITEM_PADDING, height + 2 * ITEM_PADDING);
+#endif
 }
 
 - (void) updateContentsForHost:(TemporaryHost*)host {
@@ -218,6 +260,7 @@ static const int LABEL_DY = 20;
         [_hostOverlay setImage:[UIImage imageNamed:@"ErrorOverlayIcon"]];
     }
     else {
+        [_hostOverlay setImage:nil];
         [_hostSpinner startAnimating];
     }
     
