@@ -27,6 +27,18 @@ This design targets an extended desktop over a local network. A measurable impro
 
 [Sunshine settings](https://docs.lizardbyte.dev/projects/sunshine/master/md_docs_2configuration.html), [Sunshine networking source](https://github.com/SunshineStream/Sunshine/blob/master/src/stream.cpp), [Sunshine network troubleshooting](https://github.com/SunshineStream/Sunshine/blob/master/docs/troubleshooting.md), [KDE KRfb virtual output](https://github.com/KDE/krfb/blob/master/krfb/main-virtualmonitor.cpp), [Moonlight statistics definitions](https://github.com/moonlight-stream/moonlight-docs/wiki/Frequently-Asked-Questions#what-do-the-numbers-mean-in-the-on-screen-connection-statistics).
 
+## Host measurements on CachyOS
+
+A loopback run used AMD Renoir VA-API, a moving 1440×1080 GTK layer on a nested KWin output, a private WirePlumber policy session and the headless Moonlight receiver. Each profile requested H.264 at 30 FPS. The table excludes the first 30 received frames in each run. The production Sunshine session was active in the background, and a second isolated fixture started during the final profile. These are single-run observations with shared GPU load.
+
+| Profile | Requested bit rate | Timed frames | Host processing p50 / p95 | Loopback assembly p50 / p95 |
+|---|---:|---:|---:|---:|
+| 1024×768 | 4 Mb/s | 827 | 10.4 / 16.0 ms | 0.028 / 0.055 ms |
+| 1280×960 | 6 Mb/s | 840 | 11.6 / 18.0 ms | 0.037 / 0.082 ms |
+| 1440×1080 | 8 Mb/s | 794 | 15.5 / 22.7 ms | 0.056 / 0.126 ms |
+
+Host timing runs from the capture timestamp Sunshine attaches to the frame to packet preparation. Assembly time runs from the first received packet to decoder-queue entry. The iPad's Wi-Fi link, decoding, presentation and input-to-photon response require device testing. The animated [Linux streaming regression](https://github.com/jakuza0ae/Sunshine/tree/linux-streamdesk/packaging/linux/streamdesk#isolated-streaming-regression) now validates changing decoded frames and populated timing for every mode.
+
 ## Performance experiments in order
 
 1. Compare 1024×768, 1280×960 and 1440×1080 at 30 FPS and H.264 using the same local test page. Record text legibility, p50/p95 input-to-photon, network drops, actual FPS and host CPU usage. Run one stationary, one scrolling and one interactive workload.
