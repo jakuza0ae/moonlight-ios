@@ -613,9 +613,10 @@ static TemporaryHost *shortcutHost(NSString *uuid, NSArray<NSString *> *appNames
     XCTAssertEqual([LMStreamProfile capabilityProfileForMachineIdentifier:@"iPad4,4"], LMDeviceCapabilityProfileGeneric);
 }
 
-- (void)testIPadAirDisplayPresetsFitTheScreenAndUseThirtyFPS {
+- (void)testIPadAirDisplayPresetsDefaultToThirtyAndAllowSixtyFPS {
     LMStreamProfile *profile = [LMStreamProfile defaultSecondMonitorProfile];
     XCTAssertTrue(CGSizeEqualToSize(profile.resolution, CGSizeMake(1280, 960)));
+    XCTAssertEqual(profile.fps, 30);
     NSArray<NSValue *> *modes = [LMStreamProfile supportedResolutionsForCapabilityProfile:LMDeviceCapabilityProfileIPadAir
                                                                               experimental1080pEnabled:NO];
     NSArray<NSValue *> *allModes = [LMStreamProfile supportedResolutionsForCapabilityProfile:LMDeviceCapabilityProfileIPadAir
@@ -631,6 +632,8 @@ static TemporaryHost *shortcutHost(NSString *uuid, NSArray<NSString *> *appNames
         profile.fps = 30;
         XCTAssertTrue([profile validateForCapabilityProfile:LMDeviceCapabilityProfileIPadAir error:nil]);
         profile.fps = 60;
+        XCTAssertTrue([profile validateForCapabilityProfile:LMDeviceCapabilityProfileIPadAir error:nil]);
+        profile.fps = 45;
         XCTAssertFalse([profile validateForCapabilityProfile:LMDeviceCapabilityProfileIPadAir error:nil]);
     }
 }
@@ -803,7 +806,9 @@ static TemporaryHost *shortcutHost(NSString *uuid, NSArray<NSString *> *appNames
     diagnostics.encoder = nil;
     diagnostics.codec = @"H.264";
     diagnostics.resolution = @"1280x720";
-    diagnostics.fps = @30;
+    diagnostics.fps = @57.5;
+    diagnostics.targetFps = @60;
+    diagnostics.hostProcessingMs = @4.2;
     diagnostics.bitrateKbps = @5000;
     diagnostics.rttMs = @22;
     diagnostics.droppedFrames = @3;
@@ -816,6 +821,9 @@ static TemporaryHost *shortcutHost(NSString *uuid, NSArray<NSString *> *appNames
     XCTAssertTrue([formatted containsString:@"Host display: unavailable"]);
     XCTAssertTrue([formatted containsString:@"Mapped output: unavailable"]);
     XCTAssertTrue([formatted containsString:@"Resolution: 1280x720"]);
+    XCTAssertTrue([formatted containsString:@"Target FPS: 60"]);
+    XCTAssertTrue([formatted containsString:@"Received FPS: 57.50"]);
+    XCTAssertTrue([formatted containsString:@"Host processing (avg): 4.2 ms"]);
     XCTAssertTrue([formatted containsString:@"Bitrate: 5000 kbps"]);
     XCTAssertTrue([formatted containsString:@"RTT: 22 ms"]);
     XCTAssertTrue([formatted containsString:@"Dropped frames: 3"]);

@@ -1111,6 +1111,7 @@ static NSMutableSet* hostList;
     bar.tintColor = [UIColor colorWithRed:0.75 green:0.93 blue:0.79 alpha:1];
     bar.titleTextAttributes = @{NSForegroundColorAttributeName: UIColor.whiteColor};
     if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad) {
+        _settingsButton.title = @"Other streams";
         UIBarButtonItem *display = [[UIBarButtonItem alloc] initWithTitle:@"Second display"
                                                                   style:UIBarButtonItemStylePlain
                                                                  target:self

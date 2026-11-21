@@ -134,22 +134,26 @@ NSString *LMFormatSecondMonitorDiagnostics(LMStreamDiagnostics *diagnostics) {
     }
 
     NSString *fps = diagnostics.fps != nil ? [NSString stringWithFormat:@"%.2f", diagnostics.fps.doubleValue] : LMSecondMonitorDiagnosticUnavailable;
+    NSString *targetFps = diagnostics.targetFps != nil ? diagnostics.targetFps.stringValue : LMSecondMonitorDiagnosticUnavailable;
+    NSString *hostProcessing = diagnostics.hostProcessingMs != nil ? [NSString stringWithFormat:@"%.1f ms", diagnostics.hostProcessingMs.doubleValue] : LMSecondMonitorDiagnosticUnavailable;
     NSString *bitrate = diagnostics.bitrateKbps != nil ? [NSString stringWithFormat:@"%ld kbps", (long)diagnostics.bitrateKbps.integerValue] : LMSecondMonitorDiagnosticUnavailable;
     NSString *rtt = diagnostics.rttMs != nil ? [NSString stringWithFormat:@"%ld ms", (long)diagnostics.rttMs.integerValue] : LMSecondMonitorDiagnosticUnavailable;
     NSString *droppedFrames = diagnostics.droppedFrames != nil ? [NSString stringWithFormat:@"%ld", (long)diagnostics.droppedFrames.integerValue] : LMSecondMonitorDiagnosticUnavailable;
     NSString *reconnects = diagnostics.reconnectCount != nil ? [NSString stringWithFormat:@"%ld", (long)diagnostics.reconnectCount.integerValue] : LMSecondMonitorDiagnosticUnavailable;
-    NSString *formatted = [NSString stringWithFormat:@"State: %@\nHost display: %@\nMapped output: %@\nCapture backend: %@\nEncoder: %@\nCodec: %@\nResolution: %@\nFPS: %@\nBitrate: %@\nRTT: %@\nDropped frames: %@\nReconnects: %@\nLast error: %@",
+    NSString *formatted = [NSString stringWithFormat:@"State: %@\nResolution: %@\nTarget FPS: %@\nReceived FPS: %@\nDropped frames: %@\nRTT: %@\nHost processing (avg): %@\nBitrate: %@\nCodec: %@\nHost display: %@\nMapped output: %@\nCapture backend: %@\nEncoder: %@\nReconnects: %@\nLast error: %@",
                            LMBoundedDiagnosticString(diagnostics.state),
+                           LMBoundedDiagnosticString(diagnostics.resolution),
+                           targetFps,
+                           fps,
+                           droppedFrames,
+                           rtt,
+                           hostProcessing,
+                           bitrate,
+                           LMBoundedDiagnosticString(diagnostics.codec),
                            LMBoundedDiagnosticString(diagnostics.hostDisplayID),
                            LMBoundedDiagnosticString(diagnostics.mappedOutput),
                            LMBoundedDiagnosticString(diagnostics.captureBackend),
                            LMBoundedDiagnosticString(diagnostics.encoder),
-                           LMBoundedDiagnosticString(diagnostics.codec),
-                           LMBoundedDiagnosticString(diagnostics.resolution),
-                           fps,
-                           bitrate,
-                           rtt,
-                           droppedFrames,
                            reconnects,
                            LMRedactedDiagnosticError(diagnostics.lastError)];
     if (formatted.length <= LMSecondMonitorDiagnosticOverlayMaximumLength) {
@@ -367,6 +371,7 @@ NSString *LMFormatLegacyStatsOverlay(NSInteger width,
     LMStreamDiagnostics *diagnostics = [[LMStreamDiagnostics alloc] init];
     diagnostics.state = _diagnosticState ?: @"connecting";
     diagnostics.resolution = _config.width > 0 && _config.height > 0 ? [NSString stringWithFormat:@"%dx%d", _config.width, _config.height] : nil;
+    diagnostics.targetFps = _config.frameRate > 0 ? @(_config.frameRate) : nil;
     diagnostics.bitrateKbps = _config.bitRate > 0 ? @(_config.bitRate) : nil;
     diagnostics.reconnectCount = @(_reconnectCount);
     diagnostics.lastError = _lastError;
@@ -379,7 +384,10 @@ NSString *LMFormatLegacyStatsOverlay(NSInteger width,
 
     CFTimeInterval interval = stats.endTime - stats.startTime;
     if (interval > 0) {
-        diagnostics.fps = @(stats.totalFrames / interval);
+        diagnostics.fps = @(stats.receivedFrames / interval);
+    }
+    if (stats.framesWithHostProcessingLatency > 0) {
+        diagnostics.hostProcessingMs = @(stats.totalHostProcessingLatency / (10.0 * stats.framesWithHostProcessingLatency));
     }
     diagnostics.droppedFrames = @(stats.networkDroppedFrames);
 

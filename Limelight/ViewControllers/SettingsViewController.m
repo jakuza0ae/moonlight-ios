@@ -196,7 +196,7 @@ static UIColor *SDAccent(void) {
     else {
         [self addControl:_resolutionSelector];
     }
-    [self updateStreamSummary];
+    [self updateFrameRateAvailability];
 }
 
 - (NSInteger)selectedIndexForResolution:(CGSize)resolution {
@@ -225,6 +225,21 @@ static UIColor *SDAccent(void) {
                            (long)size.width, (long)size.height, _supportedFrameRates[rate]];
 }
 
+- (void)updateFrameRateAvailability {
+    NSInteger resolutionIndex = _resolutionSelector.selectedSegmentIndex;
+    if (_fpsSelector == nil || resolutionIndex < 0 || resolutionIndex >= (NSInteger)_supportedResolutions.count) {
+        return;
+    }
+    CGSize resolution = _supportedResolutions[resolutionIndex].CGSizeValue;
+    BOOL allow60FPS = _capabilityProfile != LMDeviceCapabilityProfileIPadAir ||
+                      !CGSizeEqualToSize(resolution, CGSizeMake(1920, 1080));
+    [_fpsSelector setEnabled:allow60FPS forSegmentAtIndex:1];
+    if (!allow60FPS && _fpsSelector.selectedSegmentIndex == 1) {
+        _fpsSelector.selectedSegmentIndex = 0;
+    }
+    [self updateStreamSummary];
+}
+
 - (void)updateBitrateLabel {
     float bitrate = roundf(_bitrateSlider.value / 500.0) / 2.0;
     NSString *value = [NSString stringWithFormat:@"%.1f Mb/s", bitrate];
@@ -250,7 +265,7 @@ static UIColor *SDAccent(void) {
         _bitrateSlider.value = 8000;
     }
     [self updateBitrateLabel];
-    [self updateStreamSummary];
+    [self updateFrameRateAvailability];
 }
 
 - (void)frameRateChanged:(UISegmentedControl *)sender {
@@ -362,7 +377,7 @@ static UIColor *SDAccent(void) {
         self.selectedHostUUID = nil;
     }
     _capabilityProfile = [LMStreamProfile currentDeviceCapabilityProfile];
-    _supportedFrameRates = _capabilityProfile == LMDeviceCapabilityProfileIPadAir ? @[@30] : @[@30, @60];
+    _supportedFrameRates = @[@30, @60];
 
     self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCancel
                                                                                             target:self
@@ -413,6 +428,7 @@ static UIColor *SDAccent(void) {
     _modeSelector = [[UISegmentedControl alloc] initWithItems:@[@"Display app only", @"All apps on this computer"]];
     _modeSelector.selectedSegmentIndex = [self.allAppsHostUUID isEqualToString:self.selectedHostUUID] ? 1 : 0;
     [self addControl:_modeSelector];
+    [self addControl:[self detailLabel:@"StreamDesk Display uses this profile. Other apps use Other streams unless you select All apps on this computer."]];
 
     [self addSectionTitle:@"Picture"];
     [self addControl:[self detailLabel:@"1024×768 uses less bandwidth. 1440×1080 gives text more detail."]];
@@ -420,7 +436,7 @@ static UIColor *SDAccent(void) {
         _experimental1080Switch = [[UISwitch alloc] init];
         _experimental1080Switch.on = self.profile.experimental1080pEnabled;
         [_experimental1080Switch addTarget:self action:@selector(experimental1080Changed:) forControlEvents:UIControlEventValueChanged];
-        [self addSwitch:_experimental1080Switch title:@"Show experimental 1920×1080"];
+        [self addSwitch:_experimental1080Switch title:@"Show experimental 1920×1080 at 30 FPS"];
     }
     [self rebuildResolutionSelector];
 
@@ -433,6 +449,7 @@ static UIColor *SDAccent(void) {
     _fpsSelector.accessibilityLabel = @"Frame rate";
     [_fpsSelector addTarget:self action:@selector(frameRateChanged:) forControlEvents:UIControlEventValueChanged];
     [self addControl:_fpsSelector];
+    [self addControl:[self detailLabel:@"60 FPS shows motion more often and can use more battery and bandwidth."]];
 
     _bitrateLabel = [self detailLabel:@""];
     _bitrateLabel.font = [UIFont monospacedDigitSystemFontOfSize:15 weight:UIFontWeightMedium];
@@ -447,7 +464,7 @@ static UIColor *SDAccent(void) {
     [_bitrateSlider addTarget:self action:@selector(bitrateChanged:) forControlEvents:UIControlEventValueChanged];
     [self addControl:_bitrateSlider];
     [self updateBitrateLabel];
-    [self updateStreamSummary];
+    [self updateFrameRateAvailability];
 
     [self addSectionTitle:@"Sound and input"];
     _audioSelector = [[UISegmentedControl alloc] initWithItems:@[@"Off", @"Host", @"Stream"]];

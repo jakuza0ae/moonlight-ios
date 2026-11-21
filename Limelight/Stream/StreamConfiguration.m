@@ -226,8 +226,8 @@ BOOL LMShouldRetryStreamFailure(BOOL reconnectEnabled, BOOL stopping) {
         BOOL isFourByThree = CGSizeEqualToSize(self.resolution, CGSizeMake(1024, 768)) ||
             CGSizeEqualToSize(self.resolution, CGSizeMake(1280, 960)) ||
             CGSizeEqualToSize(self.resolution, CGSizeMake(1440, 1080));
-        if (isFourByThree && self.fps != 30) {
-            setError(LMProfileValidationErrorUnsupportedFrameRate, @"fps", @"Use 30 FPS for a 4:3 stream on the first iPad Air.");
+        if (isFourByThree && self.fps != 30 && self.fps != 60) {
+            setError(LMProfileValidationErrorUnsupportedFrameRate, @"fps", @"Choose 30 or 60 FPS for a 4:3 stream.");
             return NO;
         }
         if (!isFourByThree && !is720p && !(isExperimental1080p && self.experimental1080pEnabled)) {

@@ -23,6 +23,8 @@ FOUNDATION_EXPORT NSUInteger const LMSecondMonitorDiagnosticOverlayMaximumLength
 @property (nonatomic, copy, nullable) NSString *codec;
 @property (nonatomic, copy, nullable) NSString *resolution;
 @property (nonatomic, copy, nullable) NSNumber *fps;
+@property (nonatomic, copy, nullable) NSNumber *targetFps;
+@property (nonatomic, copy, nullable) NSNumber *hostProcessingMs;
 @property (nonatomic, copy, nullable) NSNumber *bitrateKbps;
 @property (nonatomic, copy, nullable) NSNumber *rttMs;
 @property (nonatomic, copy, nullable) NSNumber *droppedFrames;

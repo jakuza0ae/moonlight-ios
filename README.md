@@ -3,7 +3,9 @@
 
 ## StreamDesk for iPad
 
-This branch focuses on using the iPad as an extended Linux desktop. Open **Second display** to configure a computer. The **StreamDesk Display** or **iPad Air** app on the host opens with a 4:3 profile. Start with 1280×960 at 30 FPS on the first-generation iPad Air.
+This branch focuses on using the iPad as an extended Linux desktop. **Second display** sets the profile for **StreamDesk Display** or **iPad Air** on the host. **Other streams** contains the defaults for other apps. Use the **All apps on this computer** option to apply the display profile to every app on the selected computer.
+
+The first-generation iPad Air starts at 1280×960 and 30 FPS. The 4:3 modes also offer 60 FPS. Use **Stats** in the stream toolbar to compare the requested and received frame rates, network drops, and the host's reported average processing time.
 
 To connect from a launcher or a Shortcuts action that opens a URL, use `streamdesk://second-display`. Pair the computer and open its app list once, then choose it in **Second display** and save. If there is only one eligible paired computer, the shortcut can use it without a saved choice. Otherwise it opens the settings to let you pick a computer. The computer must already be running the StreamDesk host.
 
@@ -46,7 +48,7 @@ An iOS device build requires macOS and Xcode, even when signing and provisioning
 
 ## Second-Monitor Validation
 
-The second-monitor path targets an existing virtual display selected by host/profile identity. Its conservative starting profile is H.264 at `1280x720 @ 30 FPS`; `1920x1080 @ 30 FPS` is an explicit experiment, not a claimed iPad Air 1 baseline. The stable iPad Air 1 mode is `NOT MEASURED` until a physical-device run records it. Moonlight adds `secondMonitor=1` only to launches explicitly started with this profile; regular game launches do not carry the marker and keep their normal host display/audio settings.
+The second-monitor path targets an existing virtual display selected by host/profile identity. The default is H.264 at `1280×960 @ 30 FPS`. The `1920×1080 @ 30 FPS` mode requires an explicit opt-in. Use a physical iPad Air 1 to measure sustained frame rate, drops and input-to-display latency. StreamDesk adds `secondMonitor=1` to launches that use the second-display profile. Other launches keep their regular display and audio settings.
 
 The local diagnostic record follows the shared schema in the validation matrix. Moonlight's RTT, dropped-frame, and reconnect values are client-side metrics, not host metrics. Host display ID, mapped output, capture backend, and encoder remain nullable and render as `unavailable` unless an authenticated Sunshine status source supplies them. Sunshine host `rtt_ms`, `dropped_frames`, and `reconnect_count` are currently nullable because the host status path does not collect those metrics.
 
